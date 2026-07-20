@@ -1,5 +1,1 @@
-subprojects/*/
-
-/builddir*/
-kindlehf.txt
-kindlepw2.txt
+/target/

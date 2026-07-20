@@ -1,0 +1,14 @@
+[package]
+name = "sh_integration_sys"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde_json = { workspace = true }
+
+[features]
+default = []
+mock-scanner = []
+mock-lipc = []
+real-scanner = []
+real-lipc = []
