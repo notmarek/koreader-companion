@@ -1,10 +1,10 @@
 use std::os::raw::{c_char, c_void};
 
-use sh_integration_sys::lipc::{get_lipc_manager, LIPC, LIPCcode};
+use koreader_companion_sys::lipc::{get_lipc_manager, LIPCcode, LIPC};
 
 use crate::callbacks::{self, STATE};
 
-const SERVICE_NAME: &str = "tech.hackerdude.shell_integration.launcher";
+const SERVICE_NAME: &str = "github.koreader.companion.launcher";
 
 extern "C" fn stub_callback(
     lipc: *mut LIPC,
@@ -72,7 +72,10 @@ extern "C" fn go_ccb(
         }
     };
 
-    let decoded_path = sh_integration_core::url::url_decode(&file_path);
+    let decoded_path = url::form_urlencoded::parse(file_path.as_bytes())
+        .next()
+        .map(|(k, _)| k.into_owned())
+        .unwrap_or_default();
     eprintln!("Decoded path: \"{}\"", decoded_path);
 
     let _ = filetime::set_file_mtime(&decoded_path, filetime::FileTime::now());
@@ -102,7 +105,7 @@ extern "C" fn go_ccb(
 }
 
 pub fn run_main() -> i32 {
-    eprintln!("sh_integration launcher v4.1.0");
+    eprintln!("koreader_companion launcher v4.1.0");
 
     let mgr = get_lipc_manager();
     let (lipc_opt, code) = mgr.open_ex(SERVICE_NAME);
@@ -118,7 +121,13 @@ pub fn run_main() -> i32 {
 
     eprintln!("Registering properties");
 
-    mgr.register_string_property(lipc, "load", None, Some(stub_callback), std::ptr::null_mut());
+    mgr.register_string_property(
+        lipc,
+        "load",
+        None,
+        Some(stub_callback),
+        std::ptr::null_mut(),
+    );
     mgr.register_string_property(lipc, "unload", None, Some(unload_ccb), std::ptr::null_mut());
     mgr.register_string_property(lipc, "pause", None, Some(pause_ccb), std::ptr::null_mut());
     mgr.register_string_property(lipc, "go", None, Some(go_ccb), std::ptr::null_mut());

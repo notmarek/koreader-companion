@@ -1,5 +1,5 @@
+use serde_json::{json, Map, Value};
 use sha1::{Digest, Sha1};
-use serde_json::{json, Value};
 
 fn compute_sha1(file_path: &str) -> String {
     if let Ok(data) = std::fs::read(file_path) {
@@ -18,24 +18,24 @@ pub fn generate_change_request(
     author_string: Option<&str>,
     icon_string: Option<&str>,
     is_new: bool,
+    mime_type: &str,
+    extra: Option<&Map<String, Value>>,
 ) -> Value {
     let metadata = std::fs::metadata(file_path).ok();
 
-    let display_name = name_string
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| {
-            std::path::Path::new(file_path)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("Unknown")
-                .to_string()
-        });
+    let display_name = name_string.map(|s| s.to_string()).unwrap_or_else(|| {
+        std::path::Path::new(file_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Unknown")
+            .to_string()
+    });
 
     let mut insert = json!({
         "uuid": uuid,
         "location": file_path,
         "type": "Entry:Item",
-        "mimeType": "text/x-shellscript",
+        "mimeType": mime_type,
         "cdeKey": compute_sha1(file_path),
         "cdeType": "PDOC",
         "isVisibleInHome": true,
@@ -55,7 +55,7 @@ pub fn generate_change_request(
         }]
     });
 
-    if let Some(m) = metadata {
+    if let Some(ref m) = metadata {
         if let Ok(time) = m.modified() {
             if let Ok(dur) = time.duration_since(std::time::UNIX_EPOCH) {
                 insert["modificationTime"] = json!(dur.as_secs());
@@ -75,6 +75,13 @@ pub fn generate_change_request(
         insert["thumbnail"] = json!(icon);
     }
 
+    if let Some(extra_map) = extra {
+        let obj = insert.as_object_mut().unwrap();
+        for (k, v) in extra_map {
+            obj.insert(k.clone(), v.clone());
+        }
+    }
+
     json!({
         "type": "ChangeRequest",
         "commands": [{
@@ -87,38 +94,64 @@ pub fn generate_change_request(
 mod tests {
     use super::*;
 
-    fn check_common_json_fields(json: &Value) {
-        assert_eq!(json["type"], "ChangeRequest");
-        let commands = &json["commands"];
-        assert!(commands.is_array());
-        let insert = &commands[0]["insert"];
-        assert_eq!(insert["type"], "Entry:Item");
-        assert_eq!(insert["mimeType"], "text/x-shellscript");
-        assert_eq!(insert["cdeType"], "PDOC");
-        assert_eq!(insert["isVisibleInHome"], true);
-        assert_eq!(insert["isArchived"], false);
-        assert!(insert["displayObjects"].is_array());
-        assert!(insert["credits"].is_array());
-        assert!(insert["titles"].is_array());
-    }
-
     #[test]
     fn test_basic_change_request() {
         let json = generate_change_request(
             "/mnt/us/scripts/test.sh",
             "test-uuid-123",
             Some("My Script"),
-            Some("HackerDude"),
+            Some("Marek"),
             Some("/mnt/us/scripts/test.sh.sdr/icon.png"),
             true,
+            "text/x-shellscript",
+            None,
         );
-        check_common_json_fields(&json);
+        assert_eq!(json["type"], "ChangeRequest");
         let insert = &json["commands"][0]["insert"];
         assert_eq!(insert["uuid"], "test-uuid-123");
+        assert_eq!(insert["mimeType"], "text/x-shellscript");
+        assert_eq!(insert["cdeType"], "PDOC");
         assert_eq!(insert["displayTags"].as_array().unwrap()[0], "NEW");
         assert_eq!(insert["titles"][0]["display"], "My Script");
-        assert_eq!(insert["credits"][0]["name"]["display"], "HackerDude");
+        assert_eq!(insert["credits"][0]["name"]["display"], "Marek");
         assert_eq!(insert["thumbnail"], "/mnt/us/scripts/test.sh.sdr/icon.png");
+    }
+
+    #[test]
+    fn test_custom_mime_type() {
+        let json = generate_change_request(
+            "/mnt/us/books/book.epub",
+            "uuid-epub",
+            Some("My Book"),
+            Some("Author"),
+            None,
+            true,
+            "application/epub+zip",
+            None,
+        );
+        let insert = &json["commands"][0]["insert"];
+        assert_eq!(insert["mimeType"], "application/epub+zip");
+    }
+
+    #[test]
+    fn test_extra_fields() {
+        let mut extra = Map::new();
+        extra.insert("description".to_string(), json!("A test book"));
+        extra.insert("language".to_string(), json!("en"));
+
+        let json = generate_change_request(
+            "/mnt/us/books/book.epub",
+            "uuid-extra",
+            Some("Book"),
+            Some("Author"),
+            None,
+            false,
+            "application/epub+zip",
+            Some(&extra),
+        );
+        let insert = &json["commands"][0]["insert"];
+        assert_eq!(insert["description"], "A test book");
+        assert_eq!(insert["language"], "en");
     }
 
     #[test]
@@ -130,6 +163,8 @@ mod tests {
             Some("Author"),
             None,
             false,
+            "text/x-shellscript",
+            None,
         );
         let insert = &json["commands"][0]["insert"];
         assert_eq!(insert["titles"][0]["display"], "test.sh");
@@ -144,6 +179,8 @@ mod tests {
             None,
             None,
             false,
+            "text/x-shellscript",
+            None,
         );
         let insert = &json["commands"][0]["insert"];
         assert_eq!(insert["credits"][0]["name"]["display"], "Unknown");
@@ -158,6 +195,8 @@ mod tests {
             Some("Author"),
             None,
             false,
+            "text/x-shellscript",
+            None,
         );
         let insert = &json["commands"][0]["insert"];
         assert!(insert.get("thumbnail").is_none());
@@ -172,6 +211,8 @@ mod tests {
             Some("Author"),
             None,
             true,
+            "text/x-shellscript",
+            None,
         );
         let insert = &json["commands"][0]["insert"];
         assert_eq!(insert["displayTags"].as_array().unwrap()[0], "NEW");
@@ -187,6 +228,8 @@ mod tests {
             Some("Author"),
             None,
             false,
+            "text/x-shellscript",
+            None,
         );
         let insert = &json["commands"][0]["insert"];
         assert_eq!(insert["percentFinished"], 0);

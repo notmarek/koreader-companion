@@ -1,10 +1,8 @@
 use std::sync::Mutex;
 
-use sh_integration_core::command::generate_command;
-use sh_integration_core::header::parse_header;
-use sh_integration_sys::lipc::{LIPC, LIPCcode, LipcManager};
+use koreader_companion_sys::lipc::{LIPCcode, LipcManager, LIPC};
 
-const SERVICE_NAME: &str = "tech.hackerdude.shell_integration.launcher";
+const SERVICE_NAME: &str = "github.koreader.companion.launcher";
 
 pub struct LauncherState {
     pub app_pid: i32,
@@ -42,16 +40,6 @@ pub fn stub_reply(
     LIPCcode::Ok
 }
 
-pub fn get_script_command_from_path(script_path: &str) -> Option<String> {
-    eprintln!("Loading script file");
-    std::fs::read_to_string(script_path).ok().map(|content| {
-        eprintln!("Reading header");
-        let header = parse_header(&content);
-        eprintln!("Building command");
-        generate_command(script_path, &header)
-    })
-}
-
 pub fn parse_go_value(value: &str) -> Option<String> {
     let after_colon = value.find(':')?;
     let after_prefix = &value[after_colon + 1..];
@@ -83,7 +71,7 @@ pub fn spawn_app(command: &str) -> Result<i32, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sh_integration_sys::lipc::MockLipcManager;
+    use koreader_companion_sys::lipc::MockLipcManager;
 
     #[test]
     fn test_stub_reply() {
@@ -106,49 +94,6 @@ mod tests {
         assert_eq!(result, LIPCcode::Ok);
     }
 
-    fn fixture_path(name: &str) -> String {
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../tests/fixtures")
-            .join(name)
-            .to_string_lossy()
-            .into_owned()
-    }
-
-    #[test]
-    fn test_get_script_command_basic() {
-        let cmd = get_script_command_from_path(&fixture_path("test.sh"));
-        assert!(cmd.is_some());
-        let cmd = cmd.unwrap();
-        assert!(cmd.contains("sh -l"));
-    }
-
-    #[test]
-    fn test_get_script_command_fbink() {
-        let cmd = get_script_command_from_path(&fixture_path("test_fbink.sh"));
-        assert!(cmd.is_some());
-        let cmd = cmd.unwrap();
-        assert!(cmd.contains("fbink"));
-    }
-
-    #[test]
-    fn test_get_script_command_hooks() {
-        let cmd = get_script_command_from_path(&fixture_path("test_hooks.sh"));
-        assert!(cmd.is_some());
-        let cmd = cmd.unwrap();
-        assert!(cmd.contains("source"));
-        assert!(cmd.contains("on_run"));
-    }
-
-    #[test]
-    fn test_get_script_command_hooks_fbink() {
-        let cmd = get_script_command_from_path(&fixture_path("test_hooks_fbink.sh"));
-        assert!(cmd.is_some());
-        let cmd = cmd.unwrap();
-        assert!(cmd.contains("source"));
-        assert!(cmd.contains("on_run"));
-        assert!(cmd.contains("fbink"));
-    }
-
     #[test]
     fn test_parse_go_value_basic() {
         let value = format!("N:app://{}/./mnt/us/scripts/test.sh", SERVICE_NAME);
@@ -159,10 +104,7 @@ mod tests {
 
     #[test]
     fn test_parse_go_value_with_query() {
-        let value = format!(
-            "N:app://{}/./mnt/us/scripts/test.sh?param=1",
-            SERVICE_NAME
-        );
+        let value = format!("N:app://{}/./mnt/us/scripts/test.sh?param=1", SERVICE_NAME);
         let result = parse_go_value(&value);
         assert!(result.is_some());
         assert_eq!(result.unwrap(), "./mnt/us/scripts/test.sh");
@@ -170,7 +112,10 @@ mod tests {
 
     #[test]
     fn test_url_decode_with_path() {
-        let decoded = sh_integration_core::url::url_decode("%2Fmnt%2Fus%2Fdocuments%2Ftest.sh");
+        let decoded = url::form_urlencoded::parse(b"%2Fmnt%2Fus%2Fdocuments%2Ftest.sh")
+            .next()
+            .map(|(k, _)| k.into_owned())
+            .unwrap_or_default();
         assert_eq!(decoded, "/mnt/us/documents/test.sh");
     }
 }

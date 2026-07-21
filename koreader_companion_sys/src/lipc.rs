@@ -56,9 +56,19 @@ pub trait LipcManager: Send + Sync {
 
 pub static LIPC_MGR: std::sync::OnceLock<Box<dyn LipcManager + 'static>> = std::sync::OnceLock::new();
 
+#[cfg(all(feature = "real-lipc", not(test), not(target_arch = "x86_64")))]
+fn default_lipc_manager() -> Box<dyn LipcManager + 'static> {
+    Box::new(RealLipc)
+}
+
+#[cfg(any(not(feature = "real-lipc"), test, target_arch = "x86_64"))]
+fn default_lipc_manager() -> Box<dyn LipcManager + 'static> {
+    Box::new(MockLipcManager::default())
+}
+
 pub fn get_lipc_manager() -> &'static (dyn LipcManager + 'static) {
     LIPC_MGR
-        .get_or_init(|| Box::new(MockLipcManager::default()))
+        .get_or_init(default_lipc_manager)
         .as_ref()
 }
 
@@ -130,10 +140,10 @@ impl LipcManager for MockLipcManager {
     fn free_string(&self, _string: *mut c_char) {}
 }
 
-#[cfg(feature = "real-lipc")]
+#[cfg(all(feature = "real-lipc", not(test), not(target_arch = "x86_64")))]
 mod raw {
     use super::LIPC;
-use std::os::raw::{c_char, c_void};
+    use std::os::raw::{c_char, c_int, c_void};
 
     #[link(name = "lipc")]
     extern "C" {
@@ -168,15 +178,15 @@ use std::os::raw::{c_char, c_void};
     }
 }
 
-#[cfg(feature = "real-lipc")]
+#[cfg(all(feature = "real-lipc", not(test), not(target_arch = "x86_64")))]
 pub fn set_real_lipc_manager() {
     set_lipc_manager(Box::new(RealLipc));
 }
 
-#[cfg(feature = "real-lipc")]
+#[cfg(all(feature = "real-lipc", not(test), not(target_arch = "x86_64")))]
 struct RealLipc;
 
-#[cfg(feature = "real-lipc")]
+#[cfg(all(feature = "real-lipc", not(test), not(target_arch = "x86_64")))]
 impl LipcManager for RealLipc {
     fn open_ex(&self, service: &str) -> (Option<*mut LIPC>, LIPCcode) {
         let c_service = std::ffi::CString::new(service).unwrap();

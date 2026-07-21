@@ -1,0 +1,11 @@
+[package]
+name = "koreader_companion_launcher"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+koreader_companion_sys = { path = "../koreader_companion_sys" }
+log = { workspace = true }
+libc = "0.2"
+filetime = "0.2"
+url = { workspace = true }

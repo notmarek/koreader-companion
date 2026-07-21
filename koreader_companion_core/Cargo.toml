@@ -1,5 +1,5 @@
 [package]
-name = "sh_integration_core"
+name = "koreader_companion_core"
 version.workspace = true
 edition.workspace = true
 

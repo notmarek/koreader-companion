@@ -1,9 +1,9 @@
-# SH_Integration
-SH_Integration v4.1.0
+# koreader_companion
+koreader_companion v4.1.0
 
 <a href='https://ko-fi.com/H2H0R8K8K' target='_blank'><img height='36' style='border:0px;height:36px;' src='https://storage.ko-fi.com/cdn/kofi3.png?v=6' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>
 
-sh_integration is an extractor and launcher which both give the Kindle the ability to run shell scripts directly from the library.  
+koreader_companion is an extractor and launcher which both give the Kindle the ability to run shell scripts directly from the library.  
 For more information see: [The Wiki](https://kindlemodding.org/kindle-dev/scriptlets.html)
 
 # Technical info
@@ -41,7 +41,7 @@ For more information see: [The Wiki](https://kindlemodding.org/kindle-dev/script
   {
     "def": "handlerId",
     "assoc": {
-      "handlerId": "tech.hackerdude.extractor",
+      "handlerId": "github.koreader.companion",
       "props": {
         "lib": "/mnt/us/KOI/libKOIExtractor.so",
         "entry": "load_extractors"
@@ -52,7 +52,7 @@ For more information see: [The Wiki](https://kindlemodding.org/kindle-dev/script
     "def": "association",
     "assoc": {
       "interface": "extractor",
-      "handlerId": "tech.hackerdude.extractor",
+      "handlerId": "github.koreader.companion,
       "contentIds": ["GL:*.epub"],
       "default": "true"
     }

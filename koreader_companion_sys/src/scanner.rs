@@ -36,9 +36,19 @@ pub trait ScanManager: Send + Sync {
 
 pub static SCANNER: std::sync::OnceLock<Box<dyn ScanManager + 'static>> = std::sync::OnceLock::new();
 
+#[cfg(all(feature = "real-scanner", not(test), not(target_arch = "x86_64")))]
+fn default_scanner_manager() -> Box<dyn ScanManager + 'static> {
+    Box::new(RealScanner)
+}
+
+#[cfg(any(not(feature = "real-scanner"), test, target_arch = "x86_64"))]
+fn default_scanner_manager() -> Box<dyn ScanManager + 'static> {
+    Box::new(MockScanManager::default())
+}
+
 pub fn get_scanner_manager() -> &'static (dyn ScanManager + 'static) {
     SCANNER
-        .get_or_init(|| Box::new(MockScanManager::default()))
+        .get_or_init(default_scanner_manager)
         .as_ref()
 }
 
@@ -105,7 +115,7 @@ impl ScanManager for MockScanManager {
     }
 }
 
-#[cfg(feature = "real-scanner")]
+#[cfg(all(feature = "real-scanner", not(test), not(target_arch = "x86_64")))]
 mod raw {
     use std::os::raw::{c_char, c_int, c_void};
 
@@ -120,15 +130,15 @@ mod raw {
     }
 }
 
-#[cfg(feature = "real-scanner")]
+#[cfg(all(feature = "real-scanner", not(test), not(target_arch = "x86_64")))]
 pub fn set_real_scanner_manager() {
     set_scanner_manager(Box::new(RealScanner));
 }
 
-#[cfg(feature = "real-scanner")]
+#[cfg(all(feature = "real-scanner", not(test), not(target_arch = "x86_64")))]
 struct RealScanner;
 
-#[cfg(feature = "real-scanner")]
+#[cfg(all(feature = "real-scanner", not(test), not(target_arch = "x86_64")))]
 impl ScanManager for RealScanner {
     fn post_change(&self, json: &Value) -> i32 {
         let json_str = json.to_string();
