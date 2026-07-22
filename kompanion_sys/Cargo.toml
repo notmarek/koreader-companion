@@ -2,6 +2,8 @@
 name = "kompanion_sys"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+description.workspace = true
 
 [dependencies]
 cjson-bindings = { workspace = true }

@@ -420,7 +420,7 @@ dependencies = [
 
 [[package]]
 name = "kompanion_core"
-version = "4.1.0"
+version = "0.1.1"
 dependencies = [
  "base64",
  "cjson-bindings",
@@ -430,7 +430,7 @@ dependencies = [
 
 [[package]]
 name = "kompanion_extractor"
-version = "4.1.0"
+version = "0.1.1"
 dependencies = [
  "cjson-bindings",
  "epub-stream",
@@ -442,18 +442,19 @@ dependencies = [
 
 [[package]]
 name = "kompanion_launcher"
-version = "4.1.0"
+version = "0.1.1"
 dependencies = [
  "filetime",
  "kompanion_sys",
  "libc",
  "log",
+ "percent-encoding",
  "url",
 ]
 
 [[package]]
 name = "kompanion_sys"
-version = "4.1.0"
+version = "0.1.1"
 dependencies = [
  "cjson-bindings",
 ]

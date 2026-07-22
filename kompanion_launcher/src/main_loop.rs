@@ -1,6 +1,7 @@
 use std::os::raw::{c_char, c_void};
 
 use kompanion_sys::lipc::{get_lipc_manager, LIPCcode, LIPC};
+use percent_encoding::percent_decode;
 
 use crate::callbacks::{self, STATE};
 
@@ -72,17 +73,19 @@ extern "C" fn go_ccb(
         }
     };
 
-    let decoded_path = url::form_urlencoded::parse(file_path.as_bytes())
-        .next()
-        .map(|(k, _)| k.into_owned())
-        .unwrap_or_default();
+    let decoded_path = format!(
+        "/{}",
+        percent_decode(file_path.as_bytes())
+            .decode_utf8_lossy()
+            .into_owned()
+    );
     eprintln!("Decoded path: \"{}\"", decoded_path);
 
     let _ = filetime::set_file_mtime(&decoded_path, filetime::FileTime::now());
 
     mgr.set_int_property(lipc, "com.lab126.scanner", "doFullScan", 1);
 
-    let command = format!("/mnt/us/koreader/koreader.sh --asap \"{}\"", decoded_path);
+    let command = format!("/mnt/us/koreader/koreader.sh --asap '{}'", decoded_path);
 
     eprintln!("Invoking app using \"{}\"", command);
 

@@ -2,6 +2,8 @@
 name = "kompanion_launcher"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+description.workspace = true
 
 [dependencies]
 kompanion_sys = { path = "../kompanion_sys", features = ["link-scanner", "link-lipc"] }
@@ -9,3 +11,4 @@ log = { workspace = true }
 libc = "0.2"
 filetime = "0.2"
 url = { workspace = true }
+percent-encoding = "2"

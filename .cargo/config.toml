@@ -1,26 +1,13 @@
-# Cross-compilation targets for Kindle devices
-# Build with: cargo build --release --target=arm-kindle-linux-gnueabi --features=real-lipc,real-scanner
-
-[target.arm-unknown-linux-gnueabihf]
-linker = "arm-none-linux-gnueabihf-gcc"
+[build]
+target = "armv7-unknown-linux-gnueabihf"
 
 [target.armv7-unknown-linux-gnueabihf]
 linker = "arm-kindlehf-linux-gnueabihf-gcc"
 
-[target.arm-unknown-linux-gnueabi]
-linker = "arm-kindle-linux-gnueabi-gcc"
-
-[target.aarch64-unknown-linux-gnu]
-linker = "aarch64-linux-gnu-gcc"
-
-[target.armv5te-unknown-linux-gnueabi]
-linker = "arm-kindle5-linux-gnueabi-gcc"
-
-[target.armv7-unknown-linux-gnueabi]
-linker = "arm-kindlepw2-linux-gnueabi-gcc"
-
-# Build profiles
 [profile.release]
-opt-level = "s"
+opt-level = 3
 lto = true
 strip = true
+
+[alias]
+build-all = "build --release --features real-lipc,real-scanner --target armv7-unknown-linux-gnueabihf" # --target armv7-unknown-linux-gnueabi

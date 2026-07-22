@@ -58,14 +58,29 @@ pub fn parse_go_value(value: &str) -> Option<String> {
 
 pub fn spawn_app(command: &str) -> Result<i32, String> {
     eprintln!("Spawning app with command: {}", command);
-    match std::process::Command::new("/var/local/mkk/su")
+    log_command(command);
+    let command_str = format!("/var/local/mkk/su -c '{}'", command);
+    match std::process::Command::new("sh")
         .arg("-c")
-        .arg(command)
+        .arg(&command_str)
         .spawn()
     {
         Ok(child) => Ok(child.id() as i32),
         Err(e) => Err(format!("Failed to spawn: {}", e)),
     }
+}
+
+fn log_command(command: &str) {
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let log_line = format!("[{}] {}\n", timestamp, command);
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/mnt/us/kompanion-launcher.log")
+        .and_then(|mut f| std::io::Write::write_all(&mut f, log_line.as_bytes()));
 }
 
 #[cfg(test)]
@@ -112,10 +127,9 @@ mod tests {
 
     #[test]
     fn test_url_decode_with_path() {
-        let decoded = url::form_urlencoded::parse(b"%2Fmnt%2Fus%2Fdocuments%2Ftest.sh")
-            .next()
-            .map(|(k, _)| k.into_owned())
-            .unwrap_or_default();
+        let decoded = percent_encoding::percent_decode(b"%2Fmnt%2Fus%2Fdocuments%2Ftest.sh")
+            .decode_utf8_lossy()
+            .into_owned();
         assert_eq!(decoded, "/mnt/us/documents/test.sh");
     }
 }

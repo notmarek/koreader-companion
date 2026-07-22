@@ -8,9 +8,17 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "4.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
+authors = ["Marek"]
+description = "This package allows the kindle UI to index epub files and open them in KOReader"
+
+[workspace.package.metadata.manifest]
+id = "kompanion"
+name = "KOmpanion"
+manifest_version = 2
+supported_platforms = ["kindlehf"] #, "kindlepw2"]
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
