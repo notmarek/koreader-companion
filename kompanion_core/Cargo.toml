@@ -1,10 +1,10 @@
 [package]
-name = "koreader_companion_core"
+name = "kompanion_core"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 serde = { workspace = true }
-serde_json = { workspace = true }
 base64 = { workspace = true }
 sha1 = { workspace = true }
+cjson-bindings = { workspace = true }

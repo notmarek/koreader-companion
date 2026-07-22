@@ -23,7 +23,7 @@ jobs:
           meson test -C builddir
     - uses: actions/upload-artifact@v4
       with:
-        name: koreader_companion-tests_logs
+        name: kompanion-tests_logs
         path: builddir/meson-logs
 
   build-kindle:
@@ -55,7 +55,7 @@ jobs:
           meson compile -C builddir_kindle
     - uses: actions/upload-artifact@v4
       with:
-        name: koreader_companion-kindle
+        name: kompanion-kindle
         path: builddir_kindle
 
   build-kindle5:
@@ -87,7 +87,7 @@ jobs:
           meson compile -C builddir_kindle5
     - uses: actions/upload-artifact@v4
       with:
-        name: koreader_companion-kindle5
+        name: kompanion-kindle5
         path: builddir_kindle5
 
   build-kindlepw2:
@@ -119,7 +119,7 @@ jobs:
           meson compile -C builddir_kindlepw2
     - uses: actions/upload-artifact@v4
       with:
-        name: koreader_companion-kindlepw2
+        name: kompanion-kindlepw2
         path: builddir_kindlepw2
 
   build-kindlehf:
@@ -151,5 +151,5 @@ jobs:
           meson compile -C builddir_kindlehf
     - uses: actions/upload-artifact@v4
       with:
-        name: koreader_companion-kindlehf
+        name: kompanion-kindlehf
         path: builddir_kindlehf

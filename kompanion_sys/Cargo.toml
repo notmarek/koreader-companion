@@ -1,10 +1,10 @@
 [package]
-name = "koreader_companion_sys"
+name = "kompanion_sys"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-serde_json = { workspace = true }
+cjson-bindings = { workspace = true }
 
 [features]
 default = []
@@ -12,3 +12,5 @@ mock-scanner = []
 mock-lipc = []
 real-scanner = []
 real-lipc = []
+link-scanner = []
+link-lipc = []

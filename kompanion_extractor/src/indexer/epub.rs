@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+
+use crate::extractor_log;
 use epub_stream::book::EpubBookBuilder;
-use koreader_companion_core::indexer::{FileIndexer, IndexMetadata};
-use serde_json::{json, Map};
+use kompanion_core::indexer::{FileIndexer, IndexMetadata};
 
 pub struct EpubIndexer;
 
@@ -28,38 +30,38 @@ impl FileIndexer for EpubIndexer {
             Some(meta.author.clone())
         };
 
-        let mut extra = Map::new();
+        let mut extra = HashMap::new();
 
         if let Some(ref desc) = meta.description {
             if !desc.is_empty() {
-                extra.insert("description".to_string(), json!(desc));
+                extra.insert("description".to_string(), desc.clone());
             }
         }
         if let Some(ref pub_) = meta.publisher {
             if !pub_.is_empty() {
-                extra.insert("publisher".to_string(), json!(pub_));
+                extra.insert("publisher".to_string(), pub_.clone());
             }
         }
         if let Some(ref ident) = meta.identifier {
             if !ident.is_empty() {
-                extra.insert("identifier".to_string(), json!(ident));
+                extra.insert("identifier".to_string(), ident.clone());
             }
         }
         if let Some(ref date) = meta.date {
             if !date.is_empty() {
-                extra.insert("publicationDate".to_string(), json!(date));
+                extra.insert("publicationDate".to_string(), date.clone());
             }
         }
         if let Some(ref rights) = meta.rights {
             if !rights.is_empty() {
-                extra.insert("rights".to_string(), json!(rights));
+                extra.insert("rights".to_string(), rights.clone());
             }
         }
         if !meta.language.is_empty() {
-            extra.insert("language".to_string(), json!(meta.language));
+            extra.insert("language".to_string(), meta.language.clone());
         }
         if !meta.subjects.is_empty() {
-            extra.insert("subjects".to_string(), json!(meta.subjects));
+            extra.insert("subjects".to_string(), meta.subjects.join(", "));
         }
 
         Ok(IndexMetadata {
@@ -89,44 +91,31 @@ impl FileIndexer for EpubIndexer {
 }
 
 fn extract_cover_zip(epub_path: &str, sdr_path: &str) -> Result<Option<String>, String> {
-    use std::io::Read;
+    use epub_stream::book::EpubBook;
 
-    let file = std::fs::File::open(epub_path).map_err(|e| format!("Failed to open EPUB: {}", e))?;
-    let mut archive =
-        zip::ZipArchive::new(file).map_err(|e| format!("Failed to open ZIP: {}", e))?;
+    let mut book = EpubBook::open(epub_path).map_err(|e| format!("Failed to open EPUB: {}", e))?;
 
-    let summary = EpubBookBuilder::new()
-        .parse_file(epub_path)
-        .map_err(|e| format!("Failed to parse EPUB metadata: {}", e))?;
-
-    let meta = summary.metadata();
-    let cover_item = match meta.get_cover_item() {
-        Some(item) => item,
+    let mut buf = Vec::new();
+    let cover_ref = match book
+        .read_cover_image_into(&mut buf)
+        .map_err(|e| format!("Failed to read cover: {}", e))?
+    {
+        Some(r) => r,
         None => {
-            eprintln!("No cover image found in EPUB");
+            extractor_log!("No cover image found in EPUB");
             return Ok(None);
         }
     };
 
-    let href = &cover_item.href;
-
-    let extension = href.rsplit('.').next().unwrap_or("jpg").to_lowercase();
+    let extension = cover_ref
+        .href
+        .rsplit('.')
+        .next()
+        .unwrap_or("jpg")
+        .to_lowercase();
 
     let cover_file_name = format!("cover.{}", extension);
     let cover_path = std::path::Path::new(sdr_path).join(&cover_file_name);
-
-    let mut zip_file = match archive.by_name(href) {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("Failed to find cover entry '{}' in ZIP: {}", href, e);
-            return Ok(None);
-        }
-    };
-
-    let mut buf = Vec::new();
-    zip_file
-        .read_to_end(&mut buf)
-        .map_err(|e| format!("Failed to read cover: {}", e))?;
 
     std::fs::write(&cover_path, &buf).map_err(|e| format!("Failed to write cover: {}", e))?;
 
@@ -221,6 +210,69 @@ mod tests {
         let cover_path = cover.unwrap();
         assert!(std::path::Path::new(&cover_path).exists());
         assert!(cover_path.ends_with(".jpg"));
+        assert!(cover_path.contains(".sdr/cover."));
+    }
+
+    #[test]
+    fn test_extract_cover_from_oebps_subdirectory() {
+        use std::io::Write;
+
+        let tmp = std::env::temp_dir().join(format!("epub_oebps_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).ok();
+        let epub_path = tmp.join("oebps_cover.epub");
+
+        let file = std::fs::File::create(&epub_path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+
+        zip.start_file("mimetype", options).unwrap();
+        zip.write_all(b"application/epub+zip").unwrap();
+
+        let container_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"#;
+        zip.start_file("META-INF/container.xml", options).unwrap();
+        zip.write_all(container_xml.as_bytes()).unwrap();
+
+        let opf = r#"<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="bookid">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>OEBPS Test</dc:title>
+    <dc:creator opf:role="aut">OEBPS Author</dc:creator>
+    <dc:language>en</dc:language>
+    <dc:identifier id="bookid">urn:uuid:oebps-test-id</dc:identifier>
+    <meta name="cover" content="cover-image"/>
+  </metadata>
+  <manifest>
+    <item id="cover-image" href="Images/cover.jpeg" media-type="image/jpeg"/>
+  </manifest>
+  <spine/>
+</package>"#;
+        zip.start_file("OEBPS/content.opf", options).unwrap();
+        zip.write_all(opf.as_bytes()).unwrap();
+
+        let jpeg_data = &[
+            0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0xFF, 0xD9,
+        ];
+        zip.start_file("OEBPS/Images/cover.jpeg", options).unwrap();
+        zip.write_all(jpeg_data).unwrap();
+
+        zip.finish().unwrap();
+
+        let indexer = EpubIndexer;
+        let metadata = IndexMetadata::new(Some("Title".into()), Some("Author".into()), None);
+        let cover = indexer
+            .handle_sdr(&epub_path.to_string_lossy(), &metadata)
+            .unwrap();
+
+        assert!(cover.is_some());
+        let cover_path = cover.unwrap();
+        assert!(std::path::Path::new(&cover_path).exists());
+        assert!(cover_path.ends_with(".jpeg"));
         assert!(cover_path.contains(".sdr/cover."));
     }
 

@@ -1,9 +1,10 @@
 use std::os::raw::{c_char, c_int, c_void};
 
-use koreader_companion_core::change_request::generate_change_request;
+use crate::extractor_log;
+use cjson_binding::CJson;
+use kompanion_core::change_request::generate_change_request;
 
-
-use koreader_companion_sys::scanner::{get_scanner_manager, ScannerEventType};
+use kompanion_sys::scanner::{get_scanner_manager, ScannerEventType};
 
 use crate::indexer::find_indexer;
 
@@ -28,7 +29,7 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
     let event_type = match ScannerEventType::from_i32(event.event_type) {
         Some(t) => t,
         None => {
-            eprintln!("Received unknown event: {}", event.event_type);
+            extractor_log!("Received unknown event: {}", event.event_type);
             return 1;
         }
     };
@@ -37,23 +38,40 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
     let filename = if event.filename.is_null() {
         String::new()
     } else {
-        unsafe { std::ffi::CStr::from_ptr(event.filename).to_string_lossy().into_owned() }
+        unsafe {
+            std::ffi::CStr::from_ptr(event.filename)
+                .to_string_lossy()
+                .into_owned()
+        }
     };
     let uuid = if event.uuid.is_null() {
         String::new()
     } else {
-        unsafe { std::ffi::CStr::from_ptr(event.uuid).to_string_lossy().into_owned() }
+        unsafe {
+            std::ffi::CStr::from_ptr(event.uuid)
+                .to_string_lossy()
+                .into_owned()
+        }
     };
 
-    eprintln!("koreader_companion extractor called with event type {:?}", event_type);
-    eprintln!("event_type={:?} filename={} path={} uuid={}", event_type, filename, path, uuid);
+    extractor_log!(
+        "kompanion extractor called with event type {:?}",
+        event_type
+    );
+    extractor_log!(
+        "event_type={:?} filename={} path={} uuid={}",
+        event_type,
+        filename,
+        path,
+        uuid
+    );
 
     let scanner = get_scanner_manager();
 
     let indexer = match find_indexer(&filename) {
         Some(i) => i,
         None => {
-            eprintln!("No indexer found for: {}", filename);
+            extractor_log!("No indexer found for: {}", filename);
             return 0;
         }
     };
@@ -71,7 +89,7 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
             let metadata = match indexer.extract_metadata(&full_path) {
                 Ok(m) => m,
                 Err(e) => {
-                    eprintln!("Failed to extract metadata: {}", e);
+                    extractor_log!("Failed to extract metadata: {}", e);
                     return 1;
                 }
             };
@@ -79,7 +97,7 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
             let icon = match indexer.handle_sdr(&full_path, &metadata) {
                 Ok(i) => i,
                 Err(e) => {
-                    eprintln!("Failed to handle SDR: {}", e);
+                    extractor_log!("Failed to handle SDR: {}", e);
                     return 1;
                 }
             };
@@ -88,7 +106,16 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
                 indexer.on_install(&full_path);
             }
 
-            let json = generate_change_request(
+            let mut json = match CJson::create_object() {
+                Ok(j) => j,
+                Err(_) => {
+                    extractor_log!("Failed to create CJson object");
+                    return 1;
+                }
+            };
+
+            if let Err(e) = generate_change_request(
+                &mut json,
                 &full_path,
                 &uuid_str,
                 metadata.name.as_deref(),
@@ -96,22 +123,27 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
                 icon.as_deref(),
                 true,
                 indexer.mime_type(),
-                if metadata.extra.is_empty() { None } else { Some(&metadata.extra) },
-            );
+                if metadata.extra.is_empty() {
+                    None
+                } else {
+                    Some(&metadata.extra)
+                },
+            ) {
+                extractor_log!("Failed to generate change request: {:?}", e);
+                return 1;
+            }
 
             let result = scanner.post_change(&json);
-            eprintln!(
-                "Indexing json:\n{}",
-                serde_json::to_string_pretty(&json).unwrap_or_default()
-            );
-            eprintln!("ccat error: {}", result);
+            let json_str = json.print().unwrap_or_default();
+            extractor_log!("Indexing json:\n{}", json_str);
+            extractor_log!("ccat error: {}", result);
             0
         }
         ScannerEventType::Delete => {
             let full_path = format!("{}/{}", path, filename);
 
             if !uuid.is_empty() {
-                eprintln!("Removing ccat entry.");
+                extractor_log!("Removing ccat entry.");
                 scanner.delete_ccat_entry(&uuid);
             }
 
@@ -121,7 +153,7 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
 
             let sdr_path = format!("{}.sdr", full_path);
             if std::path::Path::new(&sdr_path).exists() {
-                eprintln!("SDR exists - deleting");
+                extractor_log!("SDR exists - deleting");
                 let _ = std::fs::remove_dir_all(&sdr_path);
             }
             0
@@ -152,7 +184,7 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
             let metadata = match indexer.extract_metadata(&full_path) {
                 Ok(m) => m,
                 Err(e) => {
-                    eprintln!("Failed to extract metadata: {}", e);
+                    extractor_log!("Failed to extract metadata: {}", e);
                     return 1;
                 }
             };
@@ -160,7 +192,7 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
             let icon = match indexer.handle_sdr(&full_path, &metadata) {
                 Ok(i) => i,
                 Err(e) => {
-                    eprintln!("Failed to handle SDR: {}", e);
+                    extractor_log!("Failed to handle SDR: {}", e);
                     return 1;
                 }
             };
@@ -169,7 +201,16 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
                 indexer.on_install(&full_path);
             }
 
-            let json = generate_change_request(
+            let mut json = match CJson::create_object() {
+                Ok(j) => j,
+                Err(_) => {
+                    extractor_log!("Failed to create CJson object");
+                    return 1;
+                }
+            };
+
+            if let Err(e) = generate_change_request(
+                &mut json,
                 &full_path,
                 &new_uuid,
                 metadata.name.as_deref(),
@@ -177,8 +218,15 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
                 icon.as_deref(),
                 false,
                 indexer.mime_type(),
-                if metadata.extra.is_empty() { None } else { Some(&metadata.extra) },
-            );
+                if metadata.extra.is_empty() {
+                    None
+                } else {
+                    Some(&metadata.extra)
+                },
+            ) {
+                extractor_log!("Failed to generate change request: {:?}", e);
+                return 1;
+            }
 
             scanner.post_change(&json);
             0
@@ -188,8 +236,12 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
 }
 
 #[no_mangle]
-pub extern "C" fn load_extractor(handler: *mut *mut ScannerEventHandler, unk1: *mut c_int) -> c_int {
-    eprintln!("koreader_companion extractor v4.1.0 initialised");
+pub extern "C" fn load_extractor(
+    handler: *mut *mut ScannerEventHandler,
+    unk1: *mut c_int,
+) -> c_int {
+    crate::log::init("/mnt/us/kompanion.log");
+    extractor_log!("kompanion extractor v4.1.0 initialised");
 
     crate::indexer::init_registry();
 
@@ -207,10 +259,22 @@ mod tests {
     #[test]
     fn test_event_type_conversion() {
         assert_eq!(ScannerEventType::from_i32(0), Some(ScannerEventType::Add));
-        assert_eq!(ScannerEventType::from_i32(1), Some(ScannerEventType::Delete));
-        assert_eq!(ScannerEventType::from_i32(2), Some(ScannerEventType::Update));
-        assert_eq!(ScannerEventType::from_i32(3), Some(ScannerEventType::AddThumb));
-        assert_eq!(ScannerEventType::from_i32(4), Some(ScannerEventType::UpdateThumb));
+        assert_eq!(
+            ScannerEventType::from_i32(1),
+            Some(ScannerEventType::Delete)
+        );
+        assert_eq!(
+            ScannerEventType::from_i32(2),
+            Some(ScannerEventType::Update)
+        );
+        assert_eq!(
+            ScannerEventType::from_i32(3),
+            Some(ScannerEventType::AddThumb)
+        );
+        assert_eq!(
+            ScannerEventType::from_i32(4),
+            Some(ScannerEventType::UpdateThumb)
+        );
     }
 
     #[test]

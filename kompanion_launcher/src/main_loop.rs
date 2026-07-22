@@ -1,10 +1,10 @@
 use std::os::raw::{c_char, c_void};
 
-use koreader_companion_sys::lipc::{get_lipc_manager, LIPCcode, LIPC};
+use kompanion_sys::lipc::{get_lipc_manager, LIPCcode, LIPC};
 
 use crate::callbacks::{self, STATE};
 
-const SERVICE_NAME: &str = "github.koreader.companion.launcher";
+const SERVICE_NAME: &str = "com.notmarek.kompanion.launcher";
 
 extern "C" fn stub_callback(
     lipc: *mut LIPC,
@@ -82,13 +82,7 @@ extern "C" fn go_ccb(
 
     mgr.set_int_property(lipc, "com.lab126.scanner", "doFullScan", 1);
 
-    let command = match callbacks::get_script_command_from_path(&decoded_path) {
-        Some(c) => c,
-        None => {
-            eprintln!("Could not get script command!");
-            return callbacks::stub_reply(mgr, lipc, &property_str, &value_str);
-        }
-    };
+    let command = format!("/mnt/us/koreader/koreader.sh --asap \"{}\"", decoded_path);
 
     eprintln!("Invoking app using \"{}\"", command);
 
@@ -105,7 +99,7 @@ extern "C" fn go_ccb(
 }
 
 pub fn run_main() -> i32 {
-    eprintln!("koreader_companion launcher v4.1.0");
+    eprintln!("kompanion launcher v4.1.0");
 
     let mgr = get_lipc_manager();
     let (lipc_opt, code) = mgr.open_ex(SERVICE_NAME);

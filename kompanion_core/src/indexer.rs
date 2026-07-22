@@ -1,11 +1,11 @@
-use serde_json::{Map, Value};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct IndexMetadata {
     pub name: Option<String>,
     pub author: Option<String>,
     pub icon: Option<String>,
-    pub extra: Map<String, Value>,
+    pub extra: HashMap<String, String>,
 }
 
 impl IndexMetadata {
@@ -18,7 +18,7 @@ impl IndexMetadata {
             name,
             author,
             icon,
-            extra: Map::new(),
+            extra: HashMap::new(),
         }
     }
 }

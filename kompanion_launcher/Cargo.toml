@@ -1,10 +1,10 @@
 [package]
-name = "koreader_companion_launcher"
+name = "kompanion_launcher"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-koreader_companion_sys = { path = "../koreader_companion_sys" }
+kompanion_sys = { path = "../kompanion_sys", features = ["link-scanner", "link-lipc"] }
 log = { workspace = true }
 libc = "0.2"
 filetime = "0.2"

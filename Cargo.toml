@@ -1,9 +1,9 @@
 [workspace]
 members = [
-    "koreader_companion_core",
-    "koreader_companion_sys",
-    "koreader_companion_extractor",
-    "koreader_companion_launcher",
+    "kompanion_core",
+    "kompanion_sys",
+    "kompanion_extractor",
+    "kompanion_launcher",
 ]
 resolver = "2"
 
@@ -20,4 +20,5 @@ sha1 = "0.10"
 log = "0.4"
 epub-stream = "0.1"
 url = "2"
-zip = "2"
+zip = { version = "2", default-features = false, features = ["aes-crypto", "deflate64", "deflate", "lzma", "time"] }
+cjson-bindings = { version = "0.6", features = ["std"] }

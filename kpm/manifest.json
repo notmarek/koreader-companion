@@ -1,13 +1,13 @@
 {
   "manifest_version": 2,
-  "id": "koreader_companion",
+  "id": "kompanion",
   "name": "KOReader Companion",
   "author": "Marek",
   "description": "This package allows the kindle UI to index epub files and open them in KOReader",
   "version": [
     0,
     1,
-    0
+    1
   ],
   "dependencies": [],
   "supported_platforms": ["kindlehf"]

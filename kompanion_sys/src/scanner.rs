@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use serde_json::Value;
+use cjson_binding::CJson;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
@@ -26,7 +26,7 @@ impl ScannerEventType {
 }
 
 pub trait ScanManager: Send + Sync {
-    fn post_change(&self, json: &Value) -> i32;
+    fn post_change(&self, json: &CJson) -> i32;
     fn gen_uuid(&self, out: &mut [u8; 37]);
     fn get_thumbnail_for_uuid(&self, uuid: &str) -> Option<String>;
     fn update_ccat(&self, uuid: &str, thumbnail_path: &str);
@@ -34,7 +34,8 @@ pub trait ScanManager: Send + Sync {
     fn get_sha1_hash(&self, data: &str) -> String;
 }
 
-pub static SCANNER: std::sync::OnceLock<Box<dyn ScanManager + 'static>> = std::sync::OnceLock::new();
+pub static SCANNER: std::sync::OnceLock<Box<dyn ScanManager + 'static>> =
+    std::sync::OnceLock::new();
 
 #[cfg(all(feature = "real-scanner", not(test), not(target_arch = "x86_64")))]
 fn default_scanner_manager() -> Box<dyn ScanManager + 'static> {
@@ -47,9 +48,7 @@ fn default_scanner_manager() -> Box<dyn ScanManager + 'static> {
 }
 
 pub fn get_scanner_manager() -> &'static (dyn ScanManager + 'static) {
-    SCANNER
-        .get_or_init(default_scanner_manager)
-        .as_ref()
+    SCANNER.get_or_init(default_scanner_manager).as_ref()
 }
 
 pub fn set_scanner_manager(mgr: Box<dyn ScanManager + 'static>) {
@@ -73,8 +72,8 @@ impl Default for MockScanManager {
 }
 
 impl ScanManager for MockScanManager {
-    fn post_change(&self, json: &Value) -> i32 {
-        let s = json.to_string();
+    fn post_change(&self, json: &CJson) -> i32 {
+        let s = json.print().unwrap_or_default();
         eprintln!("[MOCK scanner] post_change: {}", &s[..s.len().min(200)]);
         self.posted_changes.lock().unwrap().push(s);
         0
@@ -119,12 +118,15 @@ impl ScanManager for MockScanManager {
 mod raw {
     use std::os::raw::{c_char, c_int, c_void};
 
-    #[link(name = "scanner")]
+    #[cfg_attr(feature = "link-scanner", link(name = "scanner"))]
     extern "C" {
         pub fn scanner_post_change(json: *mut c_void) -> c_int;
         pub fn scanner_gen_uuid(out: *mut c_char, buffer_size: c_int);
         pub fn scanner_get_thumbnail_for_uuid(uuid: *mut c_char) -> *mut c_char;
-        pub fn scanner_update_ccat(uuid: *mut c_char, thumbnail_path: *mut c_char);
+        pub fn scanner_update_ccat_entry_with_thumbpath(
+            uuid: *mut c_char,
+            thumbnail_path: *mut c_char,
+        );
         pub fn scanner_delete_ccat_entry(uuid: *mut c_char);
         pub fn getSha1Hash(data: *const c_char) -> *mut c_char;
     }
@@ -140,10 +142,8 @@ struct RealScanner;
 
 #[cfg(all(feature = "real-scanner", not(test), not(target_arch = "x86_64")))]
 impl ScanManager for RealScanner {
-    fn post_change(&self, json: &Value) -> i32 {
-        let json_str = json.to_string();
-        let c_str = std::ffi::CString::new(json_str).unwrap();
-        unsafe { raw::scanner_post_change(c_str.as_ptr() as *mut _) }
+    fn post_change(&self, json: &CJson) -> i32 {
+        unsafe { raw::scanner_post_change(json.as_ptr() as *mut _) }
     }
 
     fn gen_uuid(&self, out: &mut [u8; 37]) {
@@ -167,7 +167,10 @@ impl ScanManager for RealScanner {
         let c_uuid = std::ffi::CString::new(uuid).unwrap();
         let c_path = std::ffi::CString::new(thumbnail_path).unwrap();
         unsafe {
-            raw::scanner_update_ccat(c_uuid.as_ptr() as *mut _, c_path.as_ptr() as *mut _);
+            raw::scanner_update_ccat_entry_with_thumbpath(
+                c_uuid.as_ptr() as *mut _,
+                c_path.as_ptr() as *mut _,
+            );
         }
     }
 

@@ -145,7 +145,7 @@ mod raw {
     use super::LIPC;
     use std::os::raw::{c_char, c_int, c_void};
 
-    #[link(name = "lipc")]
+    #[cfg_attr(feature = "link-lipc", link(name = "lipc"))]
     extern "C" {
         pub fn LipcOpenEx(service: *const c_char, code: *mut c_int) -> *mut LIPC;
         pub fn LipcClose(lipc: *mut LIPC);

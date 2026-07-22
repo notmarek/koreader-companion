@@ -1,8 +1,8 @@
 use std::sync::Mutex;
 
-use koreader_companion_sys::lipc::{LIPCcode, LipcManager, LIPC};
+use kompanion_sys::lipc::{LIPCcode, LipcManager, LIPC};
 
-const SERVICE_NAME: &str = "github.koreader.companion.launcher";
+const SERVICE_NAME: &str = "com.notmarek.kompanion.launcher";
 
 pub struct LauncherState {
     pub app_pid: i32,
@@ -71,7 +71,7 @@ pub fn spawn_app(command: &str) -> Result<i32, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use koreader_companion_sys::lipc::MockLipcManager;
+    use kompanion_sys::lipc::MockLipcManager;
 
     #[test]
     fn test_stub_reply() {

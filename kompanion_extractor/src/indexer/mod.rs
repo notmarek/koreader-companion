@@ -2,16 +2,12 @@ pub mod epub;
 
 use std::sync::OnceLock;
 
-use koreader_companion_core::indexer::FileIndexer;
+use kompanion_core::indexer::FileIndexer;
 
 static REGISTRY: OnceLock<Vec<Box<dyn FileIndexer>>> = OnceLock::new();
 
 pub fn init_registry() {
-    REGISTRY
-        .set(vec![
-            Box::new(epub::EpubIndexer),
-        ])
-        .ok();
+    REGISTRY.set(vec![Box::new(epub::EpubIndexer)]).ok();
 }
 
 pub fn find_indexer(filename: &str) -> Option<&dyn FileIndexer> {
