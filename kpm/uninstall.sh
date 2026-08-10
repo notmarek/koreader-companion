@@ -1,7 +1,9 @@
 #!/bin/sh
-# Uninstall script for the Koreader Companion
+# Uninstall script for the KOmpanion
 
 echo "Deleting extractor"
+rm -f "/usr/lib/ccat/libkompanion_extractor.so"
+
 echo "Deleting launcher"
 rm -rf "/var/local/kompanion"
 
