@@ -110,3 +110,42 @@ jobs:
       with:
         name: kompanion-kindlepw2
         path: build/kindlepw2/
+
+  package:
+    runs-on: ubuntu-latest
+    needs: [build-kindlehf, build-kindlepw2]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/download-artifact@v4
+      with:
+        name: kompanion-kindlehf
+        path: build/kindlehf/
+
+    - uses: actions/download-artifact@v4
+      with:
+        name: kompanion-kindlepw2
+        path: build/kindlepw2/
+
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y jq
+
+    - name: Assemble kpkg
+      run: |
+        VERSION=$(jq -r '.version | join(".")' kpm/manifest.json)
+        mkdir -p dist
+        cp kpm/install.sh kpm/install.sql kpm/manifest.json kpm/uninstall.sh kpm/uninstall.sql build/
+        (cd build && python3 -c "
+        import tarfile, os
+        with tarfile.open('../dist/kompanion-${VERSION}.kpkg', 'w:gz', compresslevel=5) as tar:
+            for name in sorted(os.listdir('.')):
+                if not name.startswith('.'):
+                    tar.add(name)
+        ")
+        ls -lh dist/
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: kompanion-kpkg
+        path: dist/
