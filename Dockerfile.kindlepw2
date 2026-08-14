@@ -13,30 +13,16 @@ RUN wget -q https://github.com/KindleModding/koxtoolchain/releases/latest/downlo
 
 ENV PATH="/root/x-tools/arm-kindlehf-linux-gnueabihf/bin:/root/x-tools/arm-kindlepw2-linux-gnueabi/bin:$PATH"
 
+WORKDIR /build
+COPY stubs/ stubs/
+
 # Create stub shared libraries with all required symbols (resolved at runtime on the Kindle)
-RUN cat > /tmp/lipc_stub.c << 'EOF'
-void* LipcOpenEx(const char* s, int* c) { return 0; }
-void  LipcClose(void* l) {}
-int   LipcRegisterStringProperty(void* l, const char* p, void* g, void* s, void* d) { return 0; }
-int   LipcSetStringProperty(void* l, const char* svc, const char* p, const char* v) { return 0; }
-int   LipcSetIntProperty(void* l, const char* svc, const char* p, int v) { return 0; }
-int   LipcGetStringProperty(void* l, const char* svc, const char* p, char** v) { return 0; }
-void  LipcFreeString(char* s) {}
-EOF
-RUN cat > /tmp/scanner_stub.c << 'EOF'
-int   scanner_post_change(void* json) { return 0; }
-void  scanner_gen_uuid(char* out, int size) {}
-char* scanner_get_thumbnail_for_uuid(char* uuid) { return 0; }
-void  scanner_update_ccat_entry_with_thumbpath(char* uuid, char* path) {}
-void  scanner_delete_ccat_entry(char* uuid) {}
-char* getSha1Hash(const char* data) { return 0; }
-EOF
 RUN HF=/root/x-tools/arm-kindlehf-linux-gnueabihf/arm-kindlehf-linux-gnueabihf/sysroot/usr/lib && \
     PW2=/root/x-tools/arm-kindlepw2-linux-gnueabi/arm-kindlepw2-linux-gnueabi/sysroot/usr/lib && \
-    arm-kindlehf-linux-gnueabihf-gcc -shared -fPIC -o $HF/liblipc.so /tmp/lipc_stub.c && \
-    arm-kindlehf-linux-gnueabihf-gcc -shared -fPIC -o $HF/libscanner.so /tmp/scanner_stub.c && \
-    arm-kindlepw2-linux-gnueabi-gcc -shared -fPIC -o $PW2/liblipc.so /tmp/lipc_stub.c && \
-    arm-kindlepw2-linux-gnueabi-gcc -shared -fPIC -o $PW2/libscanner.so /tmp/scanner_stub.c
+    arm-kindlehf-linux-gnueabihf-gcc -shared -fPIC -o $HF/liblipc.so stubs/lipc_stub.c && \
+    arm-kindlehf-linux-gnueabihf-gcc -shared -fPIC -o $HF/libscanner.so stubs/scanner_stub.c && \
+    arm-kindlepw2-linux-gnueabi-gcc -shared -fPIC -o $PW2/liblipc.so stubs/lipc_stub.c && \
+    arm-kindlepw2-linux-gnueabi-gcc -shared -fPIC -o $PW2/libscanner.so stubs/scanner_stub.c
 
 # Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
