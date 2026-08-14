@@ -56,6 +56,18 @@ pub fn parse_go_value(value: &str) -> Option<String> {
     Some(file_path.to_string())
 }
 
+// Turn the value from parse_go_value (e.g. "./mnt/us/documents/foo.epub", possibly
+// percent-encoded for non-ASCII characters) into an absolute filesystem path.
+// The value has no leading slash, so one is prepended after percent-decoding.
+pub fn decode_go_path(file_path: &str) -> String {
+    format!(
+        "/{}",
+        percent_encoding::percent_decode(file_path.as_bytes())
+            .decode_utf8_lossy()
+            .into_owned()
+    )
+}
+
 pub fn build_launch_command(file_path: &str) -> String {
     format!("/mnt/us/koreader/koreader.sh --asap \"{}\"", file_path)
 }
@@ -293,5 +305,44 @@ mod tests {
         assert!(cmd.contains("1_1, 7"), "version string with underscore preserved");
         assert!(cmd.contains("مرکز نشر دانش"), "Persian publisher preserved");
         assert!(cmd.ends_with(".pdf\""), ".pdf extension preserved");
+    }
+
+    #[test]
+    fn test_decode_go_path_prepends_slash() {
+        // parse_go_value strips the app:// prefix and leaves a slashless path;
+        // decode_go_path must turn it back into an absolute path.
+        assert_eq!(
+            decode_go_path("mnt/us/documents/book.epub"),
+            "/mnt/us/documents/book.epub"
+        );
+    }
+
+    #[test]
+    fn test_decode_go_path_percent_encoded_spaces() {
+        assert_eq!(
+            decode_go_path("mnt/us/documents/My%20Book.epub"),
+            "/mnt/us/documents/My Book.epub"
+        );
+    }
+
+    #[test]
+    fn test_decode_go_path_percent_encoded_arabic() {
+        // Arabic characters arrive percent-encoded (UTF-8 bytes) over LIPC.
+        let encoded = "mnt/us/documents/%D8%A7%D9%84%D8%B1%D9%85%D8%B2%20%D8%A7%D9%84%D9%85%D9%81%D9%82%D9%88%D8%AF.epub";
+        assert_eq!(
+            decode_go_path(encoded),
+            "/mnt/us/documents/الرمز المفقود.epub"
+        );
+    }
+
+    #[test]
+    fn test_parse_then_decode_pipeline() {
+        // Full go-callback path pipeline: parse_go_value -> decode_go_path.
+        // parse_go_value returns "./mnt/..." (leading dot from the URL), so the
+        // decoded absolute path is "/./mnt/..." — a valid path the shell resolves.
+        let value = format!("N:app://{}/./mnt/us/documents/My%20Book.epub", SERVICE_NAME);
+        let parsed = parse_go_value(&value).unwrap();
+        let decoded = decode_go_path(&parsed);
+        assert_eq!(decoded, "/./mnt/us/documents/My Book.epub");
     }
 }

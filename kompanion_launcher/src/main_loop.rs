@@ -1,7 +1,6 @@
 use std::os::raw::{c_char, c_void};
 
 use kompanion_sys::lipc::{get_lipc_manager, LIPCcode, LIPC};
-use percent_encoding::percent_decode;
 
 use crate::callbacks::{self, STATE};
 
@@ -99,12 +98,7 @@ extern "C" fn go_ccb(
         }
     };
 
-    let decoded_path = format!(
-        "/{}",
-        percent_decode(file_path.as_bytes())
-            .decode_utf8_lossy()
-            .into_owned()
-    );
+    let decoded_path = callbacks::decode_go_path(&file_path);
     log::debug!("Decoded path: \"{}\"", decoded_path);
 
     let _ = filetime::set_file_mtime(&decoded_path, filetime::FileTime::now());
