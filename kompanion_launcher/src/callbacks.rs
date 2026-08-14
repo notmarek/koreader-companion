@@ -56,6 +56,10 @@ pub fn parse_go_value(value: &str) -> Option<String> {
     Some(file_path.to_string())
 }
 
+pub fn build_launch_command(file_path: &str) -> String {
+    format!("/mnt/us/koreader/koreader.sh --asap \"{}\"", file_path)
+}
+
 pub fn spawn_app(command: &str) -> Result<i32, String> {
     eprintln!("Spawning app with command: {}", command);
     log_command(command);
@@ -131,5 +135,28 @@ mod tests {
             .decode_utf8_lossy()
             .into_owned();
         assert_eq!(decoded, "/mnt/us/documents/test.sh");
+    }
+
+    #[test]
+    fn test_build_launch_command_simple() {
+        let cmd = build_launch_command("/mnt/us/documents/book.epub");
+        assert_eq!(cmd, "/mnt/us/koreader/koreader.sh --asap \"/mnt/us/documents/book.epub\"");
+    }
+
+    #[test]
+    fn test_build_launch_command_spaces_in_filename() {
+        // Regression: single-quoted path broke for filenames with spaces — the shell
+        // closed the outer su -c '...' quote at the first space, splitting the filename
+        // into separate words. koreader.sh then received only the first word as the path.
+        let cmd = build_launch_command("/mnt/us/documents/Wie du die Affen in deinem Kopf zähmst.epub");
+        assert!(cmd.contains("\""), "path must be double-quoted to survive spaces in su -c '...'");
+        assert!(cmd.contains("Wie du die Affen in deinem Kopf zähmst.epub"), "full filename must be preserved");
+        assert!(!cmd.contains("'"), "no single quotes in command — spawn_app wraps in single quotes");
+    }
+
+    #[test]
+    fn test_build_launch_command_umlaut() {
+        let cmd = build_launch_command("/mnt/us/documents/Bücher/käfer.epub");
+        assert_eq!(cmd, "/mnt/us/koreader/koreader.sh --asap \"/mnt/us/documents/Bücher/käfer.epub\"");
     }
 }

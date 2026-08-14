@@ -1,5 +1,7 @@
-#ARCH="kindlepw2"
-#[ -f "/usr/lib/ld-linux-armhf.so" ] && ARCH="kindlehf"
+#!/bin/sh
+# Detect architecture: kindlehf (armhf) or kindlepw2 (armel)
+ARCH="kindlepw2"
+[ -f "/lib/ld-linux-armhf.so.3" ] && ARCH="kindlehf"
 
 # Determine extractor destination
 if [ -d "/usr/lib/ccat" ]; then
@@ -10,11 +12,15 @@ fi
 
 # Install launcher
 mkdir -p /var/local/kompanion/bin
-cp -r ./kindlehf/bin/* /var/local/kompanion/bin/
+cp -r "./$ARCH/bin/." /var/local/kompanion/bin/
 
 # Install extractor
 mkdir -p "$EXTRACTOR_LIB_DIR"
-cp ./kindlehf/lib/libkompanion_extractor.so "$EXTRACTOR_LIB_DIR/"
+cp "./$ARCH/lib/libkompanion_extractor.so" "$EXTRACTOR_LIB_DIR/"
 
 # Register in appreg.db with correct paths
 sed "s|@EXTRACTOR_LIB@|${EXTRACTOR_LIB_DIR}/libkompanion_extractor.so|" ./install.sql | sqlite3 /var/local/appreg.db
+
+# Restart scanner so it picks up the new extractor registration and rescans existing files
+stop scanner 2>/dev/null || true
+start scanner 2>/dev/null || true
