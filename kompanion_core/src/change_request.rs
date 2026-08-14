@@ -220,6 +220,11 @@ mod tests {
                 .unwrap(),
             "/mnt/us/scripts/test.sh.sdr/icon.png"
         );
+
+        // Regression: cjson stub on kindlehf caused TypeError on bool fields.
+        // Verify these fields are present and the add succeeded.
+        assert!(insert.get_object_item("isVisibleInHome").is_ok());
+        assert!(insert.get_object_item("isArchived").is_ok());
     }
 
     #[test]
