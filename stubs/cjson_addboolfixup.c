@@ -3,6 +3,7 @@
  * typed convenience add functions (AddStringToObject, AddNumberToObject,
  * AddBoolToObject) added in cJSON 1.6.0, and uses different names for
  * type checks (cJSON_is_val_array instead of cJSON_IsArray).
+ * Confirmed missing on firmware 5.16.2.1.1 (Kindle Oasis 9th gen / kindlepw2).
  *
  * Provide implementations that are self-contained and don't depend on
  * any Amazon-specific naming, so the stubs work on all Kindle firmware
