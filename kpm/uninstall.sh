@@ -2,8 +2,13 @@
 # Uninstall script for the KOmpanion
 
 echo "Deleting extractor"
+
+mntroot rw
 rm -f "/usr/lib/ccat/libkompanion_extractor.so"
+mntroot ro
+
 rm -f "/var/local/kompanion/lib/libkompanion_extractor.so"
+
 
 echo "Deleting launcher"
 rm -rf "/var/local/kompanion"

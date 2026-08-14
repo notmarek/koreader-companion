@@ -6,6 +6,32 @@ use percent_encoding::percent_decode;
 use crate::callbacks::{self, STATE};
 
 const SERVICE_NAME: &str = "com.notmarek.kompanion.launcher";
+const LOG_FILE_PATH: &str = "/mnt/us/kompanion-launcher.log";
+
+fn init_logging() {
+    let log_file: Box<dyn std::io::Write + Send> = match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(LOG_FILE_PATH)
+    {
+        Ok(file) => Box::new(file),
+        Err(err) => {
+            eprintln!(
+                "Failed to open log file {}: {}; falling back to stderr",
+                LOG_FILE_PATH, err
+            );
+            Box::new(std::io::stderr())
+        }
+    };
+
+    if let Err(err) = simplelog::WriteLogger::init(
+        log::LevelFilter::Debug,
+        simplelog::Config::default(),
+        log_file,
+    ) {
+        eprintln!("Failed to initialize logger: {}", err);
+    }
+}
 
 extern "C" fn stub_callback(
     lipc: *mut LIPC,
@@ -34,13 +60,13 @@ extern "C" fn unload_ccb(
     value: *mut c_void,
     data: *mut c_void,
 ) -> LIPCcode {
-    eprintln!("unload_callback");
+    log::info!("unload_callback");
 
     {
         let state = STATE.lock().unwrap();
         if state.app_pid > 0 {
             let command_str = format!("/var/local/mkk/su -c \"kill -9 {}\"", state.app_pid);
-            eprintln!("Killing with: {}", command_str);
+            log::info!("Killing with: {}", command_str);
             let _ = std::process::Command::new("sh")
                 .arg("-c")
                 .arg(&command_str)
@@ -62,7 +88,7 @@ extern "C" fn go_ccb(
     let property_str = unsafe { std::ffi::CStr::from_ptr(property).to_string_lossy() };
     let value_str = unsafe { std::ffi::CStr::from_ptr(value as *const c_char).to_string_lossy() };
 
-    eprintln!("go_callback");
+    log::info!("go_callback");
 
     let mgr = get_lipc_manager();
 
@@ -79,7 +105,7 @@ extern "C" fn go_ccb(
             .decode_utf8_lossy()
             .into_owned()
     );
-    eprintln!("Decoded path: \"{}\"", decoded_path);
+    log::debug!("Decoded path: \"{}\"", decoded_path);
 
     let _ = filetime::set_file_mtime(&decoded_path, filetime::FileTime::now());
 
@@ -87,14 +113,14 @@ extern "C" fn go_ccb(
 
     let command = callbacks::build_launch_command(&decoded_path);
 
-    eprintln!("Invoking app using \"{}\"", command);
+    log::info!("Invoking app using \"{}\"", command);
 
     match callbacks::spawn_app(&command) {
         Ok(pid) => {
             STATE.lock().unwrap().app_pid = pid;
         }
         Err(e) => {
-            eprintln!("Failed to spawn app: {}", e);
+            log::error!("Failed to spawn app: {}", e);
         }
     }
 
@@ -102,21 +128,34 @@ extern "C" fn go_ccb(
 }
 
 pub fn run_main() -> i32 {
-    eprintln!("kompanion launcher v4.1.0");
+    init_logging();
+
+    log::info!("kompanion launcher v{}", env!("CARGO_PKG_VERSION"));
 
     let mgr = get_lipc_manager();
     let (lipc_opt, code) = mgr.open_ex(SERVICE_NAME);
 
     if code != LIPCcode::Ok {
+        log::error!(
+            "Failed to open LIPC service \"{}\": {:?}",
+            SERVICE_NAME,
+            code
+        );
         return 1;
     }
 
     let lipc = match lipc_opt {
         Some(l) => l,
-        None => return 1,
+        None => {
+            log::error!(
+                "LIPC service \"{}\" opened but returned no handle",
+                SERVICE_NAME
+            );
+            return 1;
+        }
     };
 
-    eprintln!("Registering properties");
+    log::debug!("Registering properties");
 
     mgr.register_string_property(
         lipc,
@@ -136,7 +175,7 @@ pub fn run_main() -> i32 {
         &format!("0:{}", SERVICE_NAME),
     );
 
-    eprintln!("Waiting to exit...");
+    log::info!("Waiting to exit...");
 
     loop {
         std::thread::sleep(std::time::Duration::from_secs(1));
@@ -147,13 +186,13 @@ pub fn run_main() -> i32 {
 
         let app_pid = STATE.lock().unwrap().app_pid;
         if app_pid > 0 {
-            eprintln!("Child spawned, waiting to quit");
+            log::info!("Child spawned, waiting to quit");
             let _ = wait_for_child(app_pid);
 
             let mut state = STATE.lock().unwrap();
             state.app_pid = -1;
 
-            eprintln!("Exiting");
+            log::info!("Exiting");
             mgr.set_string_property(lipc, "com.lab126.appmgrd", "stop", SERVICE_NAME);
             let _ = std::process::Command::new("/usr/bin/xrefresh")
                 .arg("-d")
@@ -162,7 +201,7 @@ pub fn run_main() -> i32 {
         }
     }
 
-    eprintln!("Running exit routine");
+    log::debug!("Running exit routine");
     mgr.close(lipc);
     0
 }

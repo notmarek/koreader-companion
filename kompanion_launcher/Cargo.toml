@@ -8,6 +8,7 @@ description.workspace = true
 [dependencies]
 kompanion_sys = { path = "../kompanion_sys", features = ["link-scanner", "link-lipc"] }
 log = { workspace = true }
+simplelog = { version = "0.12", default-features = false }
 libc = "0.2"
 filetime = "0.2"
 url = { workspace = true }

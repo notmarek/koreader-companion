@@ -420,7 +420,7 @@ dependencies = [
 
 [[package]]
 name = "kompanion_core"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "base64",
  "cjson-bindings",
@@ -430,7 +430,7 @@ dependencies = [
 
 [[package]]
 name = "kompanion_extractor"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "cjson-bindings",
  "epub-stream",
@@ -442,19 +442,20 @@ dependencies = [
 
 [[package]]
 name = "kompanion_launcher"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "filetime",
  "kompanion_sys",
  "libc",
  "log",
  "percent-encoding",
+ "simplelog",
  "url",
 ]
 
 [[package]]
 name = "kompanion_sys"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "cjson-bindings",
 ]
@@ -648,6 +649,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a219298ac11a56ea9a6d2120044824d6f01aeb034955e7af7bc16858527deea"
 
 [[package]]
+name = "simplelog"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "16257adbfaef1ee58b1363bdc0664c9b8e1e30aed86049635fb5f147d065a9c0"
+dependencies = [
+ "log",
+ "time",
+]
+
+[[package]]
 name = "smallvec"
 version = "1.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -729,6 +740,7 @@ dependencies = [
  "powerfmt",
  "serde_core",
  "time-core",
+ "time-macros",
 ]
 
 [[package]]
@@ -736,6 +748,16 @@ name = "time-core"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e1c906769ad99c88eaa54e728060edef082f8e358ff32030cb7c7d315e81109"
+
+[[package]]
+name = "time-macros"
+version = "0.2.32"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e689342a48d2ea927c87ea50cabf8594854bf940e9310208848d680d668ed85"
+dependencies = [
+ "num-conv",
+ "time-core",
+]
 
 [[package]]
 name = "tinystr"

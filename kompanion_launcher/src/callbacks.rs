@@ -29,12 +29,12 @@ pub fn stub_reply(
     property: &str,
     value: &str,
 ) -> LIPCcode {
-    eprintln!("Stub called for \"{}\" with value \"{}\"", property, value);
+    log::debug!("Stub called for \"{}\" with value \"{}\"", property, value);
 
     let id = value.split(':').next().unwrap_or("0");
     let response = format!("{}:0:", id);
     let target = format!("{}result", property);
-    eprintln!("Replying with {} = {}", target, response);
+    log::debug!("Replying with {} = {}", target, response);
 
     lipc_mgr.set_string_property(lipc, "com.lab126.appmgrd", &target, &response);
     LIPCcode::Ok
@@ -61,8 +61,7 @@ pub fn build_launch_command(file_path: &str) -> String {
 }
 
 pub fn spawn_app(command: &str) -> Result<i32, String> {
-    eprintln!("Spawning app with command: {}", command);
-    log_command(command);
+    log::info!("Spawning app with command: {}", command);
     let command_str = format!("/var/local/mkk/su -c '{}'", command);
     match std::process::Command::new("sh")
         .arg("-c")
@@ -72,19 +71,6 @@ pub fn spawn_app(command: &str) -> Result<i32, String> {
         Ok(child) => Ok(child.id() as i32),
         Err(e) => Err(format!("Failed to spawn: {}", e)),
     }
-}
-
-fn log_command(command: &str) {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let log_line = format!("[{}] {}\n", timestamp, command);
-    let _ = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/mnt/us/kompanion-launcher.log")
-        .and_then(|mut f| std::io::Write::write_all(&mut f, log_line.as_bytes()));
 }
 
 #[cfg(test)]
