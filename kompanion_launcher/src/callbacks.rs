@@ -193,4 +193,31 @@ mod tests {
             .into_owned();
         assert_eq!(decoded, "/mnt/us/documents/الرمز المفقود.epub");
     }
+
+    #[test]
+    fn test_build_launch_command_arabic_unknown_author() {
+        // Arabic filename with مجهول (unknown author), URL slug in web-safe encoding
+        // (underscores instead of dots/slashes), hash, source tag — no ISBN
+        let path = "/mnt/us/documents/درجة ممارسة رؤساء الأقسام الأكاديمية في كليات الجامعة -- مجهول -- www_goldenshamela_com -- fe90b27bb3ac46c030ded0f30783a9a4 -- The Webs' Archive.epub";
+        let cmd = build_launch_command(path);
+        assert!(cmd.contains("درجة ممارسة"), "Arabic title preserved");
+        assert!(cmd.contains("مجهول"), "Arabic unknown-author marker preserved");
+        assert!(cmd.contains("www_goldenshamela_com"), "URL slug with underscores preserved");
+        assert!(cmd.contains("fe90b27bb3ac46c030ded0f30783a9a4"), "hash preserved");
+        assert!(cmd.contains("The Webs' Archive.epub"), "source tag preserved");
+    }
+
+    #[test]
+    fn test_build_launch_command_persian_pdf() {
+        // Persian (Farsi) filename: multiple authors separated by " , " and " _ " for
+        // translator, version string with underscore (1_1), Persian publisher, .pdf extension
+        let path = "/mnt/us/documents/حساب دیفرانسیل و انتگرال و هندسه تحلیلی - جلد اول قسمت اول -- جورج توماس , راس فینی _ برگردان به پارسی از سیامک کاظمی، -- 1_1, 7 -- مرکز نشر دانش.pdf";
+        let cmd = build_launch_command(path);
+        assert!(cmd.contains("حساب دیفرانسیل"), "Persian title preserved");
+        assert!(cmd.contains("جورج توماس , راس فینی"), "multiple authors with comma preserved");
+        assert!(cmd.contains("برگردان به پارسی از سیامک کاظمی،"), "translator notation preserved");
+        assert!(cmd.contains("1_1, 7"), "version string with underscore preserved");
+        assert!(cmd.contains("مرکز نشر دانش"), "Persian publisher preserved");
+        assert!(cmd.ends_with(".pdf\""), ".pdf extension preserved");
+    }
 }
