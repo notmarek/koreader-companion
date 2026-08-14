@@ -145,4 +145,52 @@ mod tests {
         let cmd = build_launch_command("/mnt/us/documents/Bücher/käfer.epub");
         assert_eq!(cmd, "/mnt/us/koreader/koreader.sh --asap \"/mnt/us/documents/Bücher/käfer.epub\"");
     }
+
+    #[test]
+    fn test_build_launch_command_arabic_epub() {
+        // Real-world filename: Arabic title with [Arabic] tag, author, year, URL slug,
+        // ISBN, hash, and source tag — all separated by " -- "
+        let path = "/mnt/us/documents/الرمز المفقود، طبعة خاصة مصورة [Arabic] -- دان براون -- 2009 -- https___t_me_mystery_books_ar -- isbn13 9780385533829 -- 4c09d7143957f731b60438ded778b988 -- The Webs' Archive.epub";
+        let cmd = build_launch_command(path);
+        assert!(cmd.contains("\""), "path must be double-quoted");
+        assert!(cmd.contains("الرمز المفقود"), "Arabic title preserved");
+        assert!(cmd.contains("[Arabic]"), "bracketed tag preserved");
+        assert!(cmd.contains("دان براون"), "Arabic author preserved");
+        assert!(cmd.contains("isbn13 9780385533829"), "ISBN preserved");
+        assert!(cmd.contains("4c09d7143957f731b60438ded778b988"), "hash preserved");
+        assert!(cmd.contains("The Webs' Archive.epub"), "source tag with apostrophe preserved");
+    }
+
+    #[test]
+    fn test_build_launch_command_arabic_mobi() {
+        // Real-world .mobi filename: Arabic author with comma, full publisher name with
+        // commas and city, year — all in the filename
+        let path = "/mnt/us/documents/براون، دان - جحيم [Arabic] -- دان براون -- Penguin Random House LLC, New York, 2013 -- https___t_me_mystery_books_ar -- isbn13 9780385537858 -- 079c203c83fa25d6261722e930cdc824 -- The Webs' Archive.mobi";
+        let cmd = build_launch_command(path);
+        assert!(cmd.contains("براون، دان"), "Arabic author with Arabic comma preserved");
+        assert!(cmd.contains("Penguin Random House LLC, New York, 2013"), "publisher with commas and year preserved");
+        assert!(cmd.contains("The Webs' Archive.mobi"), ".mobi extension and source tag preserved");
+    }
+
+    #[test]
+    fn test_build_launch_command_apostrophe_in_path() {
+        // build_launch_command double-quotes the path, so an apostrophe in the filename
+        // is safe at this level. Note: spawn_app wraps the whole command in single quotes,
+        // so a literal ' in the path would break the su -c '...' shell invocation.
+        let path = "/mnt/us/documents/The Webs' Archive.epub";
+        let cmd = build_launch_command(path);
+        assert!(cmd.contains("\""), "path must be double-quoted");
+        assert!(cmd.contains("The Webs' Archive.epub"), "apostrophe passed through at build level");
+    }
+
+    #[test]
+    fn test_url_decode_arabic_filename() {
+        // Arabic filenames arrive URL-encoded over LIPC before being passed to
+        // build_launch_command. Verify percent_decode round-trips the Arabic correctly.
+        let encoded = b"%2Fmnt%2Fus%2Fdocuments%2F%D8%A7%D9%84%D8%B1%D9%85%D8%B2%20%D8%A7%D9%84%D9%85%D9%81%D9%82%D9%88%D8%AF.epub";
+        let decoded = percent_encoding::percent_decode(encoded)
+            .decode_utf8_lossy()
+            .into_owned();
+        assert_eq!(decoded, "/mnt/us/documents/الرمز المفقود.epub");
+    }
 }
