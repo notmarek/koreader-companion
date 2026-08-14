@@ -14,6 +14,11 @@ jobs:
     - name: Install dependencies
       run: sudo apt-get update && sudo apt-get install -y libcjson-dev
 
+    - name: Test cJSON compatibility stubs against modern libcjson
+      run: |
+        gcc tests/cjson_stub_test.c stubs/cjson_addboolfixup.c $(pkg-config --cflags --libs libcjson) -o /tmp/cjson_stub_test
+        /tmp/cjson_stub_test
+
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
 
@@ -49,7 +54,14 @@ jobs:
         targets: armv7-unknown-linux-gnueabihf
 
     - name: Build
-      run: RUSTFLAGS="-C link-arg=/tmp/cjson_addboolfixup.o" cargo build-hf
+      run: |
+        # cjson stub only on the extractor: on the launcher it makes the linker
+        # pull the sysroot libcjson.so and fail ("DSO missing from command line")
+        RUSTFLAGS="-C link-arg=/tmp/cjson_addboolfixup.o" \
+          cargo build --release --target armv7-unknown-linux-gnueabihf \
+            --features kompanion_sys/real-lipc,kompanion_sys/real-scanner -p kompanion_extractor
+        cargo build --release --target armv7-unknown-linux-gnueabihf \
+          --features kompanion_sys/real-lipc,kompanion_sys/real-scanner -p kompanion_launcher
 
     - name: Package
       run: |
@@ -95,7 +107,15 @@ jobs:
         targets: armv7-unknown-linux-gnueabi
 
     - name: Build
-      run: RUSTFLAGS="-C link-arg=/tmp/getauxval_stub.o -C link-arg=/tmp/cjson_addboolfixup.o" cargo build-pw2
+      run: |
+        # cjson stub only on the extractor (see kindlehf job); getauxval stub
+        # is needed by both binaries on the kindlepw2 glibc 2.12 sysroot
+        RUSTFLAGS="-C link-arg=/tmp/getauxval_stub.o -C link-arg=/tmp/cjson_addboolfixup.o" \
+          cargo build --release --target armv7-unknown-linux-gnueabi \
+            --features kompanion_sys/real-lipc,kompanion_sys/real-scanner -p kompanion_extractor
+        RUSTFLAGS="-C link-arg=/tmp/getauxval_stub.o" \
+          cargo build --release --target armv7-unknown-linux-gnueabi \
+            --features kompanion_sys/real-lipc,kompanion_sys/real-scanner -p kompanion_launcher
 
     - name: Package
       run: |

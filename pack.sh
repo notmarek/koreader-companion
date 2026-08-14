@@ -13,8 +13,24 @@ arm-kindlepw2-linux-gnueabi-gcc -c -o /tmp/cjson_addboolfixup_pw2.o stubs/cjson_
 # kindlepw2 sysroot glibc 2.12 lacks getauxval (added in 2.16)
 arm-kindlepw2-linux-gnueabi-gcc -c -o /tmp/getauxval_stub.o stubs/getauxval_stub.c
 
-RUSTFLAGS="-C link-arg=/tmp/cjson_addboolfixup_hf.o" cargo build-hf
-RUSTFLAGS="-C link-arg=/tmp/getauxval_stub.o -C link-arg=/tmp/cjson_addboolfixup_pw2.o" cargo build-pw2
+FEATURES="kompanion_sys/real-lipc,kompanion_sys/real-scanner"
+
+# The cjson stub must only be linked into the extractor SO. Linking it into the
+# launcher too makes the linker pull the sysroot libcjson.so and fail with
+# "DSO missing from command line" (binutils >= 2.45).
+RUSTFLAGS="-C link-arg=/tmp/cjson_addboolfixup_hf.o" \
+  cargo build --release --target armv7-unknown-linux-gnueabihf \
+    --features "$FEATURES" -p kompanion_extractor
+cargo build --release --target armv7-unknown-linux-gnueabihf \
+  --features "$FEATURES" -p kompanion_launcher
+
+# kindlepw2: same split; the getauxval stub is needed by both binaries.
+RUSTFLAGS="-C link-arg=/tmp/getauxval_stub.o -C link-arg=/tmp/cjson_addboolfixup_pw2.o" \
+  cargo build --release --target armv7-unknown-linux-gnueabi \
+    --features "$FEATURES" -p kompanion_extractor
+RUSTFLAGS="-C link-arg=/tmp/getauxval_stub.o" \
+  cargo build --release --target armv7-unknown-linux-gnueabi \
+    --features "$FEATURES" -p kompanion_launcher
 
 rm -rf build dist
 mkdir dist

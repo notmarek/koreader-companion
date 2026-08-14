@@ -9,9 +9,12 @@
  * any Amazon-specific naming, so the stubs work on all Kindle firmware
  * variants (kindlepw2 and kindlehf alike).
  *
- * cJSON type constants (stable across all known cJSON versions):
- *   cJSON_False=0, cJSON_True=1, cJSON_NULL=2, cJSON_Number=3,
- *   cJSON_String=4, cJSON_Array=5, cJSON_Object=6
+ * cJSON type constants are NOT stable across versions:
+ *   - Amazon's ancient fork (pre-1.6, e.g. firmware 5.16.x) uses sequential
+ *     constants: cJSON_Array=5, cJSON_Object=6
+ *   - modern cJSON (1.7.x, shipped by newer firmware) uses bitflag
+ *     constants: cJSON_Array=1<<5=32, cJSON_Object=1<<6=64
+ * The type checks below accept both so the stub works on any firmware.
  *
  * The cJSON struct layout (stable since cJSON's inception):
  *   struct cJSON { struct cJSON *next, *prev, *child; int type; ... }
@@ -73,12 +76,14 @@ void *cJSON_CreateStringArray(const char *const *strings, int count)
 
 int cJSON_IsArray(const void *item)
 {
-    return cjson_type(item) == 5; /* cJSON_Array */
+    int t = cjson_type(item);
+    return t == 5 || t == 32; /* ancient fork or modern bitflag cJSON_Array */
 }
 
 int cJSON_IsObject(const void *item)
 {
-    return cjson_type(item) == 6; /* cJSON_Object */
+    int t = cjson_type(item);
+    return t == 6 || t == 64; /* ancient fork or modern bitflag cJSON_Object */
 }
 
 /* cJSON_Print returns malloc'd memory; free it the standard way */
