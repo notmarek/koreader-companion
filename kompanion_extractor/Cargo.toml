@@ -15,3 +15,4 @@ cjson-bindings = { workspace = true }
 epub-stream = { workspace = true }
 zip = { workspace = true }
 log = { workspace = true }
+simplelog = { version = "0.12", default-features = false }

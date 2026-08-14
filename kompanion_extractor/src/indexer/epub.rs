@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use crate::extractor_log;
 use epub_stream::book::EpubBookBuilder;
 use kompanion_core::indexer::{FileIndexer, IndexMetadata};
 
@@ -102,7 +101,7 @@ fn extract_cover_zip(epub_path: &str, sdr_path: &str) -> Result<Option<String>, 
     {
         Some(r) => r,
         None => {
-            extractor_log!("No cover image found in EPUB");
+            log::debug!("No cover image found in EPUB");
             return Ok(None);
         }
     };

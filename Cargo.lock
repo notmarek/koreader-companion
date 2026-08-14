@@ -437,6 +437,7 @@ dependencies = [
  "kompanion_core",
  "kompanion_sys",
  "log",
+ "simplelog",
  "zip",
 ]
 

@@ -1,6 +1,5 @@
 use std::os::raw::{c_char, c_int, c_void};
 
-use crate::extractor_log;
 use cjson_binding::CJson;
 use kompanion_core::change_request::generate_change_request;
 
@@ -29,7 +28,7 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
     let event_type = match ScannerEventType::from_i32(event.event_type) {
         Some(t) => t,
         None => {
-            extractor_log!("Received unknown event: {}", event.event_type);
+            log::warn!("Received unknown event: {}", event.event_type);
             return 1;
         }
     };
@@ -54,11 +53,11 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
         }
     };
 
-    extractor_log!(
+    log::info!(
         "kompanion extractor called with event type {:?}",
         event_type
     );
-    extractor_log!(
+    log::info!(
         "event_type={:?} filename={} path={} uuid={}",
         event_type,
         filename,
@@ -71,7 +70,7 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
     let indexer = match find_indexer(&filename) {
         Some(i) => i,
         None => {
-            extractor_log!("No indexer found for: {}", filename);
+            log::debug!("No indexer found for: {}", filename);
             return 0;
         }
     };
@@ -89,7 +88,7 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
             let metadata = match indexer.extract_metadata(&full_path) {
                 Ok(m) => m,
                 Err(e) => {
-                    extractor_log!("Failed to extract metadata: {}", e);
+                    log::error!("Failed to extract metadata: {}", e);
                     return 1;
                 }
             };
@@ -97,7 +96,7 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
             let icon = match indexer.handle_sdr(&full_path, &metadata) {
                 Ok(i) => i,
                 Err(e) => {
-                    extractor_log!("Failed to handle SDR: {}", e);
+                    log::error!("Failed to handle SDR: {}", e);
                     return 1;
                 }
             };
@@ -109,7 +108,7 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
             let mut json = match CJson::create_object() {
                 Ok(j) => j,
                 Err(_) => {
-                    extractor_log!("Failed to create CJson object");
+                    log::error!("Failed to create CJson object");
                     return 1;
                 }
             };
@@ -129,21 +128,21 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
                     Some(&metadata.extra)
                 },
             ) {
-                extractor_log!("Failed to generate change request: {:?}", e);
+                log::error!("Failed to generate change request: {:?}", e);
                 return 1;
             }
 
             let result = scanner.post_change(&json);
             let json_str = json.print().unwrap_or_default();
-            extractor_log!("Indexing json:\n{}", json_str);
-            extractor_log!("ccat error: {}", result);
+            log::debug!("Indexing json:\n{}", json_str);
+            log::debug!("ccat error: {}", result);
             0
         }
         ScannerEventType::Delete => {
             let full_path = format!("{}/{}", path, filename);
 
             if !uuid.is_empty() {
-                extractor_log!("Removing ccat entry.");
+                log::info!("Removing ccat entry.");
                 scanner.delete_ccat_entry(&uuid);
             }
 
@@ -153,7 +152,7 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
 
             let sdr_path = format!("{}.sdr", full_path);
             if std::path::Path::new(&sdr_path).exists() {
-                extractor_log!("SDR exists - deleting");
+                log::info!("SDR exists - deleting");
                 let _ = std::fs::remove_dir_all(&sdr_path);
             }
             0
@@ -184,7 +183,7 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
             let metadata = match indexer.extract_metadata(&full_path) {
                 Ok(m) => m,
                 Err(e) => {
-                    extractor_log!("Failed to extract metadata: {}", e);
+                    log::error!("Failed to extract metadata: {}", e);
                     return 1;
                 }
             };
@@ -192,7 +191,7 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
             let icon = match indexer.handle_sdr(&full_path, &metadata) {
                 Ok(i) => i,
                 Err(e) => {
-                    extractor_log!("Failed to handle SDR: {}", e);
+                    log::error!("Failed to handle SDR: {}", e);
                     return 1;
                 }
             };
@@ -204,7 +203,7 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
             let mut json = match CJson::create_object() {
                 Ok(j) => j,
                 Err(_) => {
-                    extractor_log!("Failed to create CJson object");
+                    log::error!("Failed to create CJson object");
                     return 1;
                 }
             };
@@ -224,7 +223,7 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
                     Some(&metadata.extra)
                 },
             ) {
-                extractor_log!("Failed to generate change request: {:?}", e);
+                log::error!("Failed to generate change request: {:?}", e);
                 return 1;
             }
 
@@ -241,7 +240,7 @@ pub extern "C" fn load_extractor(
     unk1: *mut c_int,
 ) -> c_int {
     crate::log::init("/mnt/us/kompanion.log");
-    extractor_log!("kompanion extractor v4.1.0 initialised");
+    log::info!("kompanion extractor v4.1.0 initialised");
 
     crate::indexer::init_registry();
 
