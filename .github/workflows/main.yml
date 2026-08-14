@@ -6,150 +6,84 @@ on:
   workflow_dispatch:
 
 jobs:
-  tests:
+  build:
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    - name: build
-      continue-on-error: true
+
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y jq file
+
+    - name: Download toolchains
       run: |
-          sudo apt update
-          sudo apt install g++-14 python3 python3-pip python3-setuptools python3-wheel ninja-build
-          pip3 install meson
-          meson setup builddir
-          meson test -C builddir
+        wget -q https://github.com/KindleModding/koxtoolchain/releases/latest/download/kindlehf.tar.gz -O - | tar -xzf - -C ~
+        wget -q https://github.com/KindleModding/koxtoolchain/releases/latest/download/kindlepw2.tar.gz -O - | tar -xzf - -C ~
+
+    - name: Add toolchains to PATH
+      run: |
+        echo "$HOME/x-tools/arm-kindlehf-linux-gnueabihf/bin" >> $GITHUB_PATH
+        echo "$HOME/x-tools/arm-kindlepw2-linux-gnueabi/bin" >> $GITHUB_PATH
+
+    - name: Create stub libraries (Kindle system libs, resolved at runtime)
+      run: |
+        cat > /tmp/lipc_stub.c << 'EOF'
+        void* LipcOpenEx(const char* s, int* c) { return 0; }
+        void  LipcClose(void* l) {}
+        int   LipcRegisterStringProperty(void* l, const char* p, void* g, void* s, void* d) { return 0; }
+        int   LipcSetStringProperty(void* l, const char* svc, const char* p, const char* v) { return 0; }
+        int   LipcSetIntProperty(void* l, const char* svc, const char* p, int v) { return 0; }
+        int   LipcGetStringProperty(void* l, const char* svc, const char* p, char** v) { return 0; }
+        void  LipcFreeString(char* s) {}
+        EOF
+        cat > /tmp/scanner_stub.c << 'EOF'
+        int   scanner_post_change(void* json) { return 0; }
+        void  scanner_gen_uuid(char* out, int size) {}
+        char* scanner_get_thumbnail_for_uuid(char* uuid) { return 0; }
+        void  scanner_update_ccat_entry_with_thumbpath(char* uuid, char* path) {}
+        void  scanner_delete_ccat_entry(char* uuid) {}
+        char* getSha1Hash(const char* data) { return 0; }
+        EOF
+        # kindlepw2 sysroot has glibc 2.12; getauxval was added in 2.16
+        cat > /tmp/getauxval_stub.c << 'EOF'
+        unsigned long getauxval(unsigned long type) { return 0; }
+        EOF
+        HF=$HOME/x-tools/arm-kindlehf-linux-gnueabihf/arm-kindlehf-linux-gnueabihf/sysroot/usr/lib
+        PW2=$HOME/x-tools/arm-kindlepw2-linux-gnueabi/arm-kindlepw2-linux-gnueabi/sysroot/usr/lib
+        arm-kindlehf-linux-gnueabihf-gcc -shared -fPIC -o $HF/liblipc.so /tmp/lipc_stub.c
+        arm-kindlehf-linux-gnueabihf-gcc -shared -fPIC -o $HF/libscanner.so /tmp/scanner_stub.c
+        arm-kindlepw2-linux-gnueabi-gcc -shared -fPIC -o $PW2/liblipc.so /tmp/lipc_stub.c
+        arm-kindlepw2-linux-gnueabi-gcc -shared -fPIC -o $PW2/libscanner.so /tmp/scanner_stub.c
+        arm-kindlepw2-linux-gnueabi-gcc -c -o /tmp/getauxval_stub.o /tmp/getauxval_stub.c
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: armv7-unknown-linux-gnueabihf,armv7-unknown-linux-gnueabi
+
+    - name: Build kindlehf
+      run: cargo build-hf
+
+    - name: Build kindlepw2
+      run: RUSTFLAGS="-C link-arg=/tmp/getauxval_stub.o" cargo build-pw2
+
+    - name: Package
+      run: |
+        VERSION=$(jq -r '.version | join(".")' kpm/manifest.json)
+        mkdir -p dist
+        mkdir -p build/kindlehf/bin build/kindlehf/lib
+        mkdir -p build/kindlepw2/bin build/kindlepw2/lib
+        cp kpm/install.sh kpm/install.sql kpm/manifest.json kpm/uninstall.sh kpm/uninstall.sql build/
+        cp target/armv7-unknown-linux-gnueabihf/release/kompanion_launcher build/kindlehf/bin/
+        cp target/armv7-unknown-linux-gnueabihf/release/libkompanion_extractor.so build/kindlehf/lib/
+        cp target/armv7-unknown-linux-gnueabi/release/kompanion_launcher build/kindlepw2/bin/
+        cp target/armv7-unknown-linux-gnueabi/release/libkompanion_extractor.so build/kindlepw2/lib/
+        (cd build && tar -czf ../dist/kompanion-${VERSION}.kpkg *)
+        echo "=== kindlehf ===" && file build/kindlehf/bin/kompanion_launcher
+        echo "=== kindlepw2 ===" && file build/kindlepw2/bin/kompanion_launcher
+        ls -lh dist/
+
     - uses: actions/upload-artifact@v4
       with:
-        name: kompanion-tests_logs
-        path: builddir/meson-logs
-
-  build-kindle:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Download toolchain
-      run: wget -q https://github.com/KindleModding/koxtoolchain/releases/latest/download/kindle.tar.gz -O - | tar -xzf - -C ~
-
-    - uses: actions/checkout@v4
-      with:
-        repository: KindleModding/kindle-sdk
-        submodules: recursive
-        path: kindle-sdk
-    - name: "Setup kindle-sdk"
-      run: |
-          sudo apt update
-          sudo apt install -y zlib1g-dev libarchive-dev nettle-dev curl
-          bash ./kindle-sdk/gen-sdk.sh kindle
-
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    - name: build
-      run: |
-          sudo apt install g++-14 python3 python3-pip python3-setuptools python3-wheel ninja-build
-          pip3 install meson
-          meson setup --cross-file ~/x-tools/arm-kindle-linux-gnueabi/meson-crosscompile.txt builddir_kindle
-          meson compile -C builddir_kindle
-    - uses: actions/upload-artifact@v4
-      with:
-        name: kompanion-kindle
-        path: builddir_kindle
-
-  build-kindle5:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Download toolchain
-      run: wget -q https://github.com/KindleModding/koxtoolchain/releases/latest/download/kindle5.tar.gz -O - | tar -xzf - -C ~
-
-    - uses: actions/checkout@v4
-      with:
-        repository: KindleModding/kindle-sdk
-        submodules: recursive
-        path: kindle-sdk
-    - name: "Setup kindle-sdk"
-      run: |
-          sudo apt update
-          sudo apt install -y zlib1g-dev libarchive-dev nettle-dev curl
-          bash ./kindle-sdk/gen-sdk.sh kindle5
-
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    - name: build
-      run: |
-          sudo apt install g++-14 python3 python3-pip python3-setuptools python3-wheel ninja-build
-          pip3 install meson
-          meson setup --cross-file ~/x-tools/arm-kindle5-linux-gnueabi/meson-crosscompile.txt builddir_kindle5
-          meson compile -C builddir_kindle5
-    - uses: actions/upload-artifact@v4
-      with:
-        name: kompanion-kindle5
-        path: builddir_kindle5
-
-  build-kindlepw2:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Download toolchain
-      run: wget -q https://github.com/KindleModding/koxtoolchain/releases/latest/download/kindlepw2.tar.gz -O - | tar -xzf - -C ~
-
-    - uses: actions/checkout@v4
-      with:
-        repository: KindleModding/kindle-sdk
-        submodules: recursive
-        path: kindle-sdk
-    - name: "Setup kindle-sdk"
-      run: |
-          sudo apt update
-          sudo apt install -y zlib1g-dev libarchive-dev nettle-dev curl
-          bash ./kindle-sdk/gen-sdk.sh kindlepw2
-
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    - name: build
-      run: |
-          sudo apt install g++-14 python3 python3-pip python3-setuptools python3-wheel ninja-build
-          pip3 install meson
-          meson setup --cross-file ~/x-tools/arm-kindlepw2-linux-gnueabi/meson-crosscompile.txt builddir_kindlepw2
-          meson compile -C builddir_kindlepw2
-    - uses: actions/upload-artifact@v4
-      with:
-        name: kompanion-kindlepw2
-        path: builddir_kindlepw2
-
-  build-kindlehf:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Download toolchain
-      run: wget -q https://github.com/KindleModding/koxtoolchain/releases/latest/download/kindlehf.tar.gz -O - | tar -xzf - -C ~
-
-    - uses: actions/checkout@v4
-      with:
-        repository: KindleModding/kindle-sdk
-        submodules: recursive
-        path: kindle-sdk
-    - name: "Setup kindle-sdk"
-      run: |
-          sudo apt update
-          sudo apt install -y zlib1g-dev libarchive-dev nettle-dev curl
-          bash ./kindle-sdk/gen-sdk.sh kindlehf
-
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    - name: build
-      run: |
-          sudo apt install g++-14 python3 python3-pip python3-setuptools python3-wheel ninja-build
-          pip3 install meson
-          meson setup --cross-file ~/x-tools/arm-kindlehf-linux-gnueabihf/meson-crosscompile.txt builddir_kindlehf
-          meson compile -C builddir_kindlehf
-    - uses: actions/upload-artifact@v4
-      with:
-        name: kompanion-kindlehf
-        path: builddir_kindlehf
+        name: kompanion-kpkg
+        path: dist/

@@ -10,5 +10,5 @@
     2
   ],
   "dependencies": [],
-  "supported_platforms": ["kindlehf"]
+  "supported_platforms": ["kindlehf", "kindlepw2"]
 }

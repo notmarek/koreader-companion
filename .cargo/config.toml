@@ -4,10 +4,14 @@ target = "armv7-unknown-linux-gnueabihf"
 [target.armv7-unknown-linux-gnueabihf]
 linker = "arm-kindlehf-linux-gnueabihf-gcc"
 
+[target.armv7-unknown-linux-gnueabi]
+linker = "arm-kindlepw2-linux-gnueabi-gcc"
+
 [profile.release]
 opt-level = 3
 lto = true
 strip = true
 
 [alias]
-build-all = "build --release --features real-lipc,real-scanner --target armv7-unknown-linux-gnueabihf" # --target armv7-unknown-linux-gnueabi
+build-hf = "build --release --features real-lipc,real-scanner --target armv7-unknown-linux-gnueabihf"
+build-pw2 = "build --release --features real-lipc,real-scanner --target armv7-unknown-linux-gnueabi"
