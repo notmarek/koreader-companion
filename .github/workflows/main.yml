@@ -18,7 +18,7 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
 
     - name: Run tests
-      run: cargo test --target x86_64-unknown-linux-gnu -p kompanion_extractor
+      run: cargo test --target x86_64-unknown-linux-gnu -p kompanion_extractor -p kompanion_launcher
 
   build:
     runs-on: ubuntu-latest

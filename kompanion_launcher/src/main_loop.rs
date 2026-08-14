@@ -85,7 +85,7 @@ extern "C" fn go_ccb(
 
     mgr.set_int_property(lipc, "com.lab126.scanner", "doFullScan", 1);
 
-    let command = format!("/mnt/us/koreader/koreader.sh --asap \"{}\"", decoded_path);
+    let command = callbacks::build_launch_command(&decoded_path);
 
     eprintln!("Invoking app using \"{}\"", command);
 
