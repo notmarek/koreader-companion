@@ -1,16 +1,23 @@
 /*
  * Kindle's bundled libcjson.so is a custom old build that lacks the
- * convenience add functions and uses different type-check naming.
- * Provide implementations using the primitives that DO exist so our
- * extractor SO is self-contained and doesn't fail dlopen at runtime.
+ * typed convenience add functions (AddStringToObject, AddNumberToObject,
+ * AddBoolToObject) added in cJSON 1.6.0, and uses different names for
+ * type checks (cJSON_is_val_array instead of cJSON_IsArray).
  *
- * Available on Kindle: cJSON_CreateObject, cJSON_CreateArray,
- *   cJSON_CreateString, cJSON_CreateNumber, cJSON_CreateTrue,
- *   cJSON_CreateFalse, cJSON_AddItemToObject, cJSON_AddItemToArray,
- *   cJSON_Print, cJSON_Delete, cJSON_is_val_array, cJSON_is_val_object
+ * Provide implementations that are self-contained and don't depend on
+ * any Amazon-specific naming, so the stubs work on all Kindle firmware
+ * variants (kindlepw2 and kindlehf alike).
+ *
+ * cJSON type constants (stable across all known cJSON versions):
+ *   cJSON_False=0, cJSON_True=1, cJSON_NULL=2, cJSON_Number=3,
+ *   cJSON_String=4, cJSON_Array=5, cJSON_Object=6
+ *
+ * The cJSON struct layout (stable since cJSON's inception):
+ *   struct cJSON { struct cJSON *next, *prev, *child; int type; ... }
+ * The type field is at offset 12 on 32-bit ARM (3 pointers × 4 bytes).
  */
 
-/* Forward declarations of functions that DO exist on the Kindle */
+/* Forward declarations using only universally available cJSON primitives */
 extern void *cJSON_CreateString(const char *str);
 extern void *cJSON_CreateNumber(double num);
 extern void *cJSON_CreateTrue(void);
@@ -18,8 +25,14 @@ extern void *cJSON_CreateFalse(void);
 extern void *cJSON_CreateArray(void);
 extern void  cJSON_AddItemToObject(void *object, const char *string, void *item);
 extern void  cJSON_AddItemToArray(void *array, void *item);
-extern int   cJSON_is_val_array(const void *item);
-extern int   cJSON_is_val_object(const void *item);
+extern void  free(void *ptr);
+
+/* Read the type field from a cJSON node: next+prev+child = 3 pointers = 12 bytes on 32-bit */
+static int cjson_type(const void *item)
+{
+    if (!item) return -1;
+    return *((const int *)((const char *)item + 3 * sizeof(void *)));
+}
 
 void *cJSON_AddStringToObject(void *object, const char *name, const char *str)
 {
@@ -59,16 +72,15 @@ void *cJSON_CreateStringArray(const char *const *strings, int count)
 
 int cJSON_IsArray(const void *item)
 {
-    return cJSON_is_val_array(item);
+    return cjson_type(item) == 5; /* cJSON_Array */
 }
 
 int cJSON_IsObject(const void *item)
 {
-    return cJSON_is_val_object(item);
+    return cjson_type(item) == 6; /* cJSON_Object */
 }
 
 /* cJSON_Print returns malloc'd memory; free it the standard way */
-extern void free(void *ptr);
 void cJSON_free(void *ptr)
 {
     free(ptr);
