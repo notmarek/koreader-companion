@@ -7,18 +7,31 @@ set -e
 
 VERSION=$(jq -r '.version | join(".")' kpm/manifest.json)
 
-cargo build-hf
-cargo build-pw2
+# Kindle's libcjson.so lacks convenience add functions (pre-1.6.0); compile static fixup
+arm-kindlehf-linux-gnueabihf-gcc -c -o /tmp/cjson_addboolfixup_hf.o stubs/cjson_addboolfixup.c
+arm-kindlepw2-linux-gnueabi-gcc -c -o /tmp/cjson_addboolfixup_pw2.o stubs/cjson_addboolfixup.c
+# kindlepw2 sysroot glibc 2.12 lacks getauxval (added in 2.16)
+arm-kindlepw2-linux-gnueabi-gcc -c -o /tmp/getauxval_stub.o stubs/getauxval_stub.c
+
+RUSTFLAGS="-C link-arg=/tmp/cjson_addboolfixup_hf.o" cargo build-hf
+RUSTFLAGS="-C link-arg=/tmp/getauxval_stub.o -C link-arg=/tmp/cjson_addboolfixup_pw2.o" cargo build-pw2
 
 rm -rf build dist
 mkdir dist
-mkdir -p build/kindlehf/{bin,lib}
-mkdir -p build/kindlepw2/{bin,lib}
-cp kpm/* build/
+mkdir -p build/kindlehf/bin build/kindlehf/lib
+mkdir -p build/kindlepw2/bin build/kindlepw2/lib
+cp kpm/install.sh kpm/install.sql kpm/manifest.json kpm/uninstall.sh kpm/uninstall.sql build/
 cp target/armv7-unknown-linux-gnueabihf/release/kompanion_launcher build/kindlehf/bin/
 cp target/armv7-unknown-linux-gnueabihf/release/libkompanion_extractor.so build/kindlehf/lib/
 cp target/armv7-unknown-linux-gnueabi/release/kompanion_launcher build/kindlepw2/bin/
 cp target/armv7-unknown-linux-gnueabi/release/libkompanion_extractor.so build/kindlepw2/lib/
-(cd build && tar -czf ../dist/kompanion-${VERSION}.kpkg *)
+(cd build && python3 -c "
+import tarfile, os, sys
+out = sys.argv[1]
+with tarfile.open(out, 'w:gz', compresslevel=5) as tar:
+    for name in sorted(os.listdir('.')):
+        if not name.startswith('.'):
+            tar.add(name)
+" "../dist/kompanion-${VERSION}.kpkg")
 
 rm -rf build

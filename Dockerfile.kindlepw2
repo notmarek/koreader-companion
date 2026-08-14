@@ -31,18 +31,12 @@ void  scanner_update_ccat_entry_with_thumbpath(char* uuid, char* path) {}
 void  scanner_delete_ccat_entry(char* uuid) {}
 char* getSha1Hash(const char* data) { return 0; }
 EOF
-# getauxval: added in glibc 2.16; kindlepw2 sysroot has glibc 2.12 — provide stub object
-RUN cat > /tmp/getauxval_stub.c << 'EOF'
-unsigned long getauxval(unsigned long type) { return 0; }
-EOF
-
 RUN HF=/root/x-tools/arm-kindlehf-linux-gnueabihf/arm-kindlehf-linux-gnueabihf/sysroot/usr/lib && \
     PW2=/root/x-tools/arm-kindlepw2-linux-gnueabi/arm-kindlepw2-linux-gnueabi/sysroot/usr/lib && \
     arm-kindlehf-linux-gnueabihf-gcc -shared -fPIC -o $HF/liblipc.so /tmp/lipc_stub.c && \
     arm-kindlehf-linux-gnueabihf-gcc -shared -fPIC -o $HF/libscanner.so /tmp/scanner_stub.c && \
     arm-kindlepw2-linux-gnueabi-gcc -shared -fPIC -o $PW2/liblipc.so /tmp/lipc_stub.c && \
-    arm-kindlepw2-linux-gnueabi-gcc -shared -fPIC -o $PW2/libscanner.so /tmp/scanner_stub.c && \
-    arm-kindlepw2-linux-gnueabi-gcc -c -o /tmp/getauxval_stub.o /tmp/getauxval_stub.c
+    arm-kindlepw2-linux-gnueabi-gcc -shared -fPIC -o $PW2/libscanner.so /tmp/scanner_stub.c
 
 # Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
@@ -54,11 +48,17 @@ RUN rustup target add armv7-unknown-linux-gnueabihf armv7-unknown-linux-gnueabi
 WORKDIR /build
 COPY . .
 
-# Build kindlehf (no extra flags needed)
-RUN cargo build-hf
+# kindlepw2 sysroot glibc 2.12 lacks getauxval (added in 2.16), and Kindle's
+# libcjson.so lacks convenience add functions (pre-1.6.0); compile static stubs
+RUN arm-kindlepw2-linux-gnueabi-gcc -c -o /tmp/getauxval_stub.o stubs/getauxval_stub.c && \
+    arm-kindlehf-linux-gnueabihf-gcc -c -o /tmp/cjson_addboolfixup_hf.o stubs/cjson_addboolfixup.c && \
+    arm-kindlepw2-linux-gnueabi-gcc -c -o /tmp/cjson_addboolfixup_pw2.o stubs/cjson_addboolfixup.c
 
-# Build kindlepw2 with getauxval stub injected
-RUN RUSTFLAGS="-C link-arg=/tmp/getauxval_stub.o" cargo build-pw2
+# Build kindlehf with cjson compatibility stub
+RUN RUSTFLAGS="-C link-arg=/tmp/cjson_addboolfixup_hf.o" cargo build-hf
+
+# Build kindlepw2 with getauxval and cjson compatibility stubs
+RUN RUSTFLAGS="-C link-arg=/tmp/getauxval_stub.o -C link-arg=/tmp/cjson_addboolfixup_pw2.o" cargo build-pw2
 
 RUN VERSION=$(jq -r '.version | join(".")' kpm/manifest.json) && \
     rm -rf build dist && \
