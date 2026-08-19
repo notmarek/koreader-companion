@@ -9,4 +9,5 @@ description.workspace = true
 serde = { workspace = true }
 base64 = { workspace = true }
 sha1 = { workspace = true }
+hex = { workspace = true }
 cjson-bindings = { workspace = true }

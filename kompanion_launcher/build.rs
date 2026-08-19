@@ -2,6 +2,9 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
+#[path = "build_utils.rs"]
+mod build_utils;
+
 fn main() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let manifest_dir = Path::new(&manifest_dir);
@@ -74,7 +77,28 @@ fn main() {
         println!("cargo:warning=generated kpm/manifest.json");
     }
 
+    let indexer_dir = manifest_dir.parent().unwrap().join("kompanion_extractor/src/indexer");
+    let specs = build_utils::parse_indexer_specs(&indexer_dir);
+
+    let install_sql = build_utils::generate_install_sql(&specs);
+    let install_path = kpm_dir.join("install.sql");
+    let prev_install = fs::read_to_string(&install_path).unwrap_or_default();
+    if prev_install != install_sql {
+        fs::write(&install_path, &install_sql).expect("failed to write install.sql");
+        println!("cargo:warning=generated kpm/install.sql");
+    }
+
+    let uninstall_sql = build_utils::generate_uninstall_sql(&specs);
+    let uninstall_path = kpm_dir.join("uninstall.sql");
+    let prev_uninstall = fs::read_to_string(&uninstall_path).unwrap_or_default();
+    if prev_uninstall != uninstall_sql {
+        fs::write(&uninstall_path, &uninstall_sql).expect("failed to write uninstall.sql");
+        println!("cargo:warning=generated kpm/uninstall.sql");
+    }
+
     println!("cargo:rerun-if-changed=../Cargo.toml");
+    println!("cargo:rerun-if-changed=../kompanion_extractor/src/indexer");
+    println!("cargo:rerun-if-changed=build_utils.rs");
     println!("cargo:rerun-if-changed=build.rs");
 }
 
