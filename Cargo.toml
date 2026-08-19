@@ -29,5 +29,7 @@ log = "0.4"
 epub-stream = "0.1"
 url = "2"
 zip = "8"
-hex = "0.4"
+hex = "0.4.3"
+fb2 = "0.4.4"
+quick-xml = { version = "0.41", features = ["encoding", "serialize"] }
 cjson-bindings = { version = "0.6", features = ["std"] }

@@ -81,10 +81,10 @@ pub fn generate_install_sql(specs: &[IndexerSpec]) -> String {
             "INSERT INTO properties (handlerId, name, value) VALUES ('com.notmarek.kompanion.launcher', '{name}', '{value}');\n"
         ));
     }
-    for spec in specs {
+    for mime_type in unique_mime_types(specs) {
         out.push_str(&format!(
             "INSERT INTO associations (interface, handlerId, contentId, defaultAssoc) VALUES ('application', 'com.notmarek.kompanion.launcher', 'MT:{}', 'true');\n",
-            spec.mime_type
+            mime_type
         ));
     }
 
@@ -122,6 +122,21 @@ pub fn generate_uninstall_sql(specs: &[IndexerSpec]) -> String {
     out.push_str("DELETE FROM handlerIds WHERE handlerId = 'com.notmarek.kompanion.extractor';\n");
     out.push_str("COMMIT;\n");
     out
+}
+
+/// Unique mime types across all specs, preserving first-seen order.
+///
+/// Several extensions can map to the same mime type (e.g. `fb2`, `fbz`,
+/// `fb2.zip` -> `application/fictionbook2+zip`). Launcher associations are keyed
+/// by mime type, so they must be deduplicated to avoid identical rows.
+fn unique_mime_types(specs: &[IndexerSpec]) -> Vec<&str> {
+    let mut seen = Vec::new();
+    for spec in specs {
+        if !seen.iter().any(|m| *m == spec.mime_type.as_str()) {
+            seen.push(spec.mime_type.as_str());
+        }
+    }
+    seen
 }
 
 fn quoted_ext_list(specs: &[IndexerSpec]) -> String {
@@ -295,6 +310,40 @@ impl FileIndexer for CbzIndexer {
             "INSERT INTO associations (interface, handlerId, contentId, defaultAssoc) VALUES ('extractor', 'com.notmarek.kompanion.extractor', 'GL:*.cbz', 'true');"
         ));
         assert!(sql.trim_end().ends_with("COMMIT;"));
+    }
+
+    #[test]
+    fn launcher_association_dedupes_shared_mime_types() {
+        let specs = vec![
+            IndexerSpec {
+                extension: "fb2".into(),
+                mime_type: "application/fictionbook2+zip".into(),
+            },
+            IndexerSpec {
+                extension: "fbz".into(),
+                mime_type: "application/fictionbook2+zip".into(),
+            },
+            IndexerSpec {
+                extension: "fb2.zip".into(),
+                mime_type: "application/fictionbook2+zip".into(),
+            },
+        ];
+
+        let sql = generate_install_sql(&specs);
+
+        // One launcher association per unique mime type, not per extension.
+        let launcher_assoc = "INSERT INTO associations (interface, handlerId, contentId, defaultAssoc) VALUES ('application', 'com.notmarek.kompanion.launcher', 'MT:application/fictionbook2+zip', 'true');";
+        assert_eq!(sql.matches(launcher_assoc).count(), 1);
+
+        // Extension-keyed rows are still emitted for every extension.
+        assert_eq!(
+            sql.matches("INSERT INTO mimetypes (ext, mimetype) VALUES ('")
+                .count(),
+            3
+        );
+        assert!(sql.contains(
+            "INSERT INTO associations (interface, handlerId, contentId, defaultAssoc) VALUES ('extractor', 'com.notmarek.kompanion.extractor', 'GL:*.fb2.zip', 'true');"
+        ));
     }
 
     #[test]

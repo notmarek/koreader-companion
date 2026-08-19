@@ -14,5 +14,8 @@ kompanion_sys = { path = "../kompanion_sys" }
 cjson-bindings = { workspace = true }
 epub-stream = { workspace = true }
 zip = { workspace = true }
+fb2 = { workspace = true }
+base64 = { workspace = true }
+quick-xml = { version = "0.30", features = ["encoding", "serialize"] }
 log = { workspace = true }
 simplelog = { version = "0.12", default-features = false }

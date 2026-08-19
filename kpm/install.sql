@@ -1,11 +1,17 @@
 BEGIN;
-DELETE FROM mimetypes WHERE ext IN ('epub', 'cbz');
-DELETE FROM extenstions WHERE ext IN ('epub', 'cbz');
+DELETE FROM mimetypes WHERE ext IN ('epub', 'cbz', 'fb2', 'fbz', 'fb2.zip');
+DELETE FROM extenstions WHERE ext IN ('epub', 'cbz', 'fb2', 'fbz', 'fb2.zip');
 
 INSERT INTO mimetypes (ext, mimetype) VALUES ('epub', 'MT:application/epub+zip');
 INSERT INTO extenstions (ext, mimetype) VALUES ('epub', 'MT:application/epub+zip');
 INSERT INTO mimetypes (ext, mimetype) VALUES ('cbz', 'MT:application/vnd.comicbook+zip');
 INSERT INTO extenstions (ext, mimetype) VALUES ('cbz', 'MT:application/vnd.comicbook+zip');
+INSERT INTO mimetypes (ext, mimetype) VALUES ('fb2', 'MT:application/fictionbook2+zip');
+INSERT INTO extenstions (ext, mimetype) VALUES ('fb2', 'MT:application/fictionbook2+zip');
+INSERT INTO mimetypes (ext, mimetype) VALUES ('fbz', 'MT:application/fictionbook2+zip');
+INSERT INTO extenstions (ext, mimetype) VALUES ('fbz', 'MT:application/fictionbook2+zip');
+INSERT INTO mimetypes (ext, mimetype) VALUES ('fb2.zip', 'MT:application/fictionbook2+zip');
+INSERT INTO extenstions (ext, mimetype) VALUES ('fb2.zip', 'MT:application/fictionbook2+zip');
 
 -- Launcher: clean old rows first (safe reinstall)
 DELETE FROM associations WHERE handlerId = 'com.notmarek.kompanion.launcher';
@@ -22,6 +28,7 @@ INSERT INTO properties (handlerId, name, value) VALUES ('com.notmarek.kompanion.
 INSERT INTO properties (handlerId, name, value) VALUES ('com.notmarek.kompanion.launcher', 'command', '/var/local/kompanion/bin/kompanion_launcher');
 INSERT INTO associations (interface, handlerId, contentId, defaultAssoc) VALUES ('application', 'com.notmarek.kompanion.launcher', 'MT:application/epub+zip', 'true');
 INSERT INTO associations (interface, handlerId, contentId, defaultAssoc) VALUES ('application', 'com.notmarek.kompanion.launcher', 'MT:application/vnd.comicbook+zip', 'true');
+INSERT INTO associations (interface, handlerId, contentId, defaultAssoc) VALUES ('application', 'com.notmarek.kompanion.launcher', 'MT:application/fictionbook2+zip', 'true');
 
 -- Extractor: clean old rows first (safe reinstall), path set by install.sh
 DELETE FROM associations WHERE handlerId = 'com.notmarek.kompanion.extractor';
@@ -33,4 +40,7 @@ INSERT INTO properties (handlerId, name, value) VALUES ('com.notmarek.kompanion.
 INSERT INTO properties (handlerId, name, value) VALUES ('com.notmarek.kompanion.extractor', 'entry', 'load_extractor');
 INSERT INTO associations (interface, handlerId, contentId, defaultAssoc) VALUES ('extractor', 'com.notmarek.kompanion.extractor', 'GL:*.epub', 'true');
 INSERT INTO associations (interface, handlerId, contentId, defaultAssoc) VALUES ('extractor', 'com.notmarek.kompanion.extractor', 'GL:*.cbz', 'true');
+INSERT INTO associations (interface, handlerId, contentId, defaultAssoc) VALUES ('extractor', 'com.notmarek.kompanion.extractor', 'GL:*.fb2', 'true');
+INSERT INTO associations (interface, handlerId, contentId, defaultAssoc) VALUES ('extractor', 'com.notmarek.kompanion.extractor', 'GL:*.fbz', 'true');
+INSERT INTO associations (interface, handlerId, contentId, defaultAssoc) VALUES ('extractor', 'com.notmarek.kompanion.extractor', 'GL:*.fb2.zip', 'true');
 COMMIT;

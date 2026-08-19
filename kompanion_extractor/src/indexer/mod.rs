@@ -1,5 +1,6 @@
 pub mod epub;
 pub mod cbz;
+pub mod fb2;
 
 use std::sync::OnceLock;
 
@@ -8,7 +9,13 @@ use kompanion_core::indexer::FileIndexer;
 static REGISTRY: OnceLock<Vec<Box<dyn FileIndexer>>> = OnceLock::new();
 
 pub fn init_registry() {
-    REGISTRY.set(vec![Box::new(epub::EpubIndexer), Box::new(cbz::CbzIndexer)]).ok();
+    REGISTRY
+        .set(vec![
+            Box::new(epub::EpubIndexer),
+            Box::new(cbz::CbzIndexer),
+            Box::new(fb2::Fb2Indexer),
+        ])
+        .ok();
 }
 
 pub fn find_indexer(filename: &str) -> Option<&dyn FileIndexer> {

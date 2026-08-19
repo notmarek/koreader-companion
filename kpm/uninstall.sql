@@ -1,6 +1,6 @@
 BEGIN;
-DELETE FROM mimetypes WHERE ext IN ('epub', 'cbz');
-DELETE FROM extenstions WHERE ext IN ('epub', 'cbz');
+DELETE FROM mimetypes WHERE ext IN ('epub', 'cbz', 'fb2', 'fbz', 'fb2.zip');
+DELETE FROM extenstions WHERE ext IN ('epub', 'cbz', 'fb2', 'fbz', 'fb2.zip');
 
 -- Remove associations and properties for the launcher
 DELETE FROM associations WHERE handlerId = 'com.notmarek.kompanion.launcher';
