@@ -154,8 +154,11 @@ fn extract_cover(book: &FictionBook, sdr_path: &str) -> Result<Option<String>, S
         }
     };
 
+    // FB2 wraps the base64 payload across many lines; the standard engine rejects
+    // embedded whitespace, so strip all of it before decoding.
+    let cleaned: String = binary.content.chars().filter(|c| !c.is_whitespace()).collect();
     let bytes = base64::engine::general_purpose::STANDARD
-        .decode(binary.content.trim().as_bytes())
+        .decode(cleaned.as_bytes())
         .map_err(|e| format!("Failed to decode cover image: {e}"))?;
 
     let extension = image_extension(&binary.content_type, id);
@@ -431,6 +434,43 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(cover.ends_with(".sdr/cover.jpg"));
+        assert_eq!(std::fs::read(&cover).unwrap(), cover_bytes());
+    }
+
+    #[test]
+    fn test_cover_with_line_wrapped_base64() {
+        // FB2 typically wraps the binary payload across multiple lines.
+        let wrapped = "/9j/4AAQSkZJRgAB\n/9k=\n";
+        let xml = format!(
+            r##"<?xml version="1.0" encoding="UTF-8"?>
+<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0" xmlns:l="http://www.w3.org/1999/xlink">
+  <description>
+    <title-info>
+      <genre>sf</genre>
+      <author><first-name>Isaac</first-name><last-name>Asimov</last-name></author>
+      <book-title>Foundation</book-title>
+      <lang>en</lang>
+      <coverpage><image l:href="#cover.jpg"/></coverpage>
+    </title-info>
+    <document-info><author><nickname>u</nickname></author><date>2020</date><id>d</id><version>1.0</version></document-info>
+  </description>
+  <body><section><p>Hi.</p></section></body>
+  <binary id="cover.jpg" content-type="image/jpeg">{wrapped}</binary>
+</FictionBook>"##
+        );
+
+        let dir = TempDir::new();
+        let path = dir.path().join("wrapped.fb2");
+        write_file(&path, xml.as_bytes());
+
+        let cover = Fb2Indexer
+            .handle_sdr(
+                &path.to_string_lossy(),
+                &IndexMetadata::new(None, None, None),
+            )
+            .unwrap()
+            .unwrap();
+
         assert_eq!(std::fs::read(&cover).unwrap(), cover_bytes());
     }
 

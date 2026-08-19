@@ -554,7 +554,7 @@ dependencies = [
 
 [[package]]
 name = "kompanion_core"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "base64",
  "cjson-bindings",
@@ -565,7 +565,7 @@ dependencies = [
 
 [[package]]
 name = "kompanion_extractor"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "base64",
  "cjson-bindings",
@@ -581,7 +581,7 @@ dependencies = [
 
 [[package]]
 name = "kompanion_launcher"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "filetime",
  "kompanion_sys",
@@ -594,7 +594,7 @@ dependencies = [
 
 [[package]]
 name = "kompanion_sys"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "cjson-bindings",
 ]

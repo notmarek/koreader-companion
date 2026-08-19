@@ -7,7 +7,7 @@
   "version": [
     0,
     1,
-    7
+    8
   ],
   "dependencies": [],
   "supported_platforms": ["kindlehf", "kindlepw2"]
