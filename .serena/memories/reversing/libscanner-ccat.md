@@ -27,9 +27,14 @@
 ## IMPLEMENTED (kompanion, Aug 2026): self-posted CCat HTTP + per-format cdeType
 - cjson-bindings REMOVED everywhere. generate_change_request (kompanion_core) now returns
   serde_json::Value; contentSource "OnDevice" + "caller" stamped at POST time.
-- kompanion_sys/src/ccat.rs: raw-TcpStream HTTP/1.1 POST to 127.0.0.1:9101/change (no new deps);
-  AuthToken header from /tmp/session_token; retries 4x (1s sleep, 503→ 1000/2000/4000us backoff);
-  parses `{"ok":true}` from plain "200 OK\n{...}" or full HTTP responses. delete = delete+updateDeletedArchivedItem pair (caller scannerDelete). update_thumbnail = update command.
+- kompanion_sys/src/ccat.rs: minreq v3 (default-features off, no TLS) blocking POST to
+  http://127.0.0.1:9101/change; AuthToken header read from /tmp/session_token each attempt;
+  retries 4x (1s sleep, 503→ 1000/2000/4000us backoff); parses {"ok":true} from response body.
+  delete = delete+updateDeletedArchivedItem pair (caller scannerDelete). update_thumbnail = update command.
+  CRITICAL: ccat's Lua HTTP parser matches header names CASE-SENSITIVELY — on the wire the
+  header must be exactly `AuthToken:`; lowercase `authtoken:` → 401 while curl works.
+  ureq is unusable here because the http crate lowercases all header names; minreq writes
+  names verbatim, so `with_header("AuthToken", ..)`.
 - RealScanner (feature real-scanner): post_change/delete/update go over HTTP; only scanner_gen_uuid
   still links libscanner. get_thumbnail_for_uuid returns None (unused). get_sha1_hash removed from trait.
 - cde_type() added to FileIndexer trait (default PDOC); EPUB + FB2 return EBOK (→ rawBookType EBOK

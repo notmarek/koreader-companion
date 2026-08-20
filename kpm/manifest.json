@@ -6,8 +6,8 @@
   "description": "This package allows the kindle UI to index epub files and open them in KOReader",
   "version": [
     0,
-    1,
-    9
+    2,
+    0
   ],
   "dependencies": [],
   "supported_platforms": ["kindlehf", "kindlepw2"]

@@ -5,8 +5,14 @@
 //! and the mandatory `contentSource: "OnDevice"` marker is stamped on the body
 //! (stock behaviour lives in `scanner_post_to_uri_internal`).
 //!
-//! Transport is `ureq` in blocking mode without TLS: ccat runs locally on
-//! plain HTTP so no TLS stack is needed on the device.
+//! Transport is `minreq` (no TLS features) straight to plain HTTP: ccat runs
+//! locally so no TLS stack is needed on the device.
+//!
+//! NOTE: the `AuthToken` header name must go on the wire verbatim — ccat's Lua
+//! HTTP parser matches header names case-sensitively (lowercase `authtoken` is
+//! rejected with 401, exact `AuthToken` succeeds). minreq serialises header
+//! names as given, so `with_header("AuthToken", ...)` is correct; do not
+//! switch to an http-crate-based client (e.g. ureq), which lowercases them.
 
 use std::time::Duration;
 
@@ -35,6 +41,7 @@ fn ccat_port() -> u16 {
 fn read_session_token() -> Option<String> {
     let token = std::fs::read_to_string(SESSION_TOKEN_PATH).ok()?;
     let token = token.trim().to_string();
+    log::info!("TOKEN: {:?}", token);
     if token.is_empty() {
         None
     } else {
@@ -47,18 +54,19 @@ fn read_session_token() -> Option<String> {
 /// response (Ok) even when the status is an error code.
 fn http_post(uri: &str, body: &str) -> Result<(u16, String), String> {
     let url = format!("http://{CCAT_HOST}:{}{uri}", ccat_port());
-    let mut request = ureq::post(&url).header("Content-Type", "application/json");
+    let mut request = minreq::post(&url).with_header("Content-Type", "application/json");
     if let Some(token) = read_session_token() {
-        request = request.header("AuthToken", &token);
+        request = request.with_header("AuthToken", &token);
     }
 
-    match request.send(body) {
-        Ok(mut resp) => {
-            let status = resp.status();
+    match request.with_body(body).send() {
+        Ok(resp) => {
+            let status = resp.status_code;
             let text = resp
-                .body_mut().read_to_string()
-                .map_err(|e| format!("read response: {e}"))?;
-            Ok((status.as_u16(), text))
+                .as_str()
+                .map_err(|e| format!("read response: {e}"))?
+                .to_string();
+            Ok((status, text))
         }
         Err(e) => Err(format!("{e}")),
     }

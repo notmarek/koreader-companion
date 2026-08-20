@@ -1,0 +1,2 @@
+use EBOK for books?
+add content tag manga to cbz?

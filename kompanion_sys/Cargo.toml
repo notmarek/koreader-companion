@@ -8,7 +8,7 @@ description.workspace = true
 [dependencies]
 serde_json = { workspace = true }
 log = { workspace = true }
-ureq = { workspace = true }
+minreq = { version = "3", default-features = false }
 
 [features]
 default = []
