@@ -36,6 +36,12 @@ pub trait FileIndexer: Send + Sync {
 
     fn mime_type(&self) -> &str;
 
+    /// CCat content type used for the library entry. Books (EPUB, FB2) should
+    /// map to "EBOK"; anything else defaults to "PDOC" (personal document).
+    fn cde_type(&self) -> &str {
+        "PDOC"
+    }
+
     fn supports_hooks(&self) -> bool {
         false
     }

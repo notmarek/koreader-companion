@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use cjson_binding::{CJson, CJsonResult};
+use serde_json::{json, Map, Value};
 use sha1::{Digest, Sha1};
 
 fn compute_sha1(file_path: &str) -> String {
@@ -20,125 +20,122 @@ fn basename(file_path: &str) -> &str {
         .unwrap_or("Unknown")
 }
 
+/// Extra metadata keys mapped to CCat insert fields (all validated by the ccat
+/// `change.lua` column_specs).
+const EXTRA_LANGUAGE: &str = "language";
+const EXTRA_PUBLISHER: &str = "publisher";
+const EXTRA_PUBLICATION_DATE: &str = "publicationDate";
+
+/// Build a CCat `/change` ChangeRequest with a single `insert` command for the
+/// entry at `file_path`.
+///
+/// `cde_type` drives how the library classifies the item (EBOK = book, PDOC =
+/// personal document, ...); sideloaded books should be EBOK.
+#[allow(clippy::too_many_arguments)]
 pub fn generate_change_request(
-    json: &mut CJson,
     file_path: &str,
     uuid: &str,
-    name_string: Option<&str>,
-    author_string: Option<&str>,
-    icon_string: Option<&str>,
+    name: Option<&str>,
+    author: Option<&str>,
+    icon: Option<&str>,
     is_new: bool,
     mime_type: &str,
+    cde_type: &str,
     extra: Option<&HashMap<String, String>>,
-) -> CJsonResult<()> {
+) -> Value {
     let metadata = std::fs::metadata(file_path).ok();
 
-    json.add_string_to_object("type", "ChangeRequest")?;
+    let mut insert = Map::new();
 
-    let mut commands = CJson::create_array()?;
-    let mut command = CJson::create_object()?;
-    let mut insert = CJson::create_object()?;
-
-    insert.add_string_to_object("uuid", uuid)?;
-    insert.add_string_to_object("location", file_path)?;
-    insert.add_string_to_object("type", "Entry:Item")?;
+    insert.insert("uuid".to_string(), Value::String(uuid.to_string()));
+    insert.insert("location".to_string(), Value::String(file_path.to_string()));
+    insert.insert("type".to_string(), Value::String("Entry:Item".to_string()));
 
     if let Some(ref m) = metadata {
         if let Ok(time) = m.modified() {
             if let Ok(dur) = time.duration_since(std::time::UNIX_EPOCH) {
-                insert.add_number_to_object("modificationTime", dur.as_secs() as f64)?;
+                insert.insert(
+                    "modificationTime".to_string(),
+                    Value::Number(dur.as_secs().into()),
+                );
             }
         }
-        insert.add_number_to_object("diskUsage", m.len() as f64)?;
-        insert.add_number_to_object("contentSize", m.len() as f64)?;
+        insert.insert("diskUsage".to_string(), Value::Number(m.len().into()));
+        insert.insert("contentSize".to_string(), Value::Number(m.len().into()));
     }
 
-    insert.add_string_to_object("mimeType", mime_type)?;
-    insert.add_string_to_object("cdeKey", &compute_sha1(file_path))?;
-    insert.add_string_to_object("cdeType", "PDOC")?;
+    insert.insert("mimeType".to_string(), Value::String(mime_type.to_string()));
+    insert.insert("cdeKey".to_string(), Value::String(compute_sha1(file_path)));
+    insert.insert("cdeType".to_string(), Value::String(cde_type.to_string()));
 
     if is_new {
-        let tags = CJson::create_string_array(&["NEW"])?;
-        insert.add_item_to_object("displayTags", tags)?;
+        // Display "NEW" badge on the library card.
+        insert.insert("displayTags".to_string(), json!(["NEW"]));
     } else {
-        insert.add_number_to_object("percentFinished", 0.0)?;
+        // Keep the existing reading progress position after a re-insert.
+        insert.insert("percentFinished".to_string(), Value::Number(serde_json::Number::from_f64(0.0).unwrap()));
     }
 
-    insert.add_bool_to_object("isVisibleInHome", true)?;
-    insert.add_bool_to_object("isArchived", false)?;
+    insert.insert("isVisibleInHome".to_string(), Value::Bool(true));
+    insert.insert("isArchived".to_string(), Value::Bool(false));
 
-    {
-        let mut display_objects = CJson::create_array()?;
+    insert.insert(
+        "displayObjects".to_string(),
+        json!([{ "ref": "titles" }, { "ref": "credits" }]),
+    );
+    insert.insert(
+        "credits".to_string(),
+        json!([{ "kind": "Author", "name": { "display": author.unwrap_or("Unknown") } }]),
+    );
+    insert.insert(
+        "titles".to_string(),
+        json!([{ "display": name.unwrap_or_else(|| basename(file_path)) }]),
+    );
 
-        let mut title_display = CJson::create_object()?;
-        title_display.add_string_to_object("ref", "titles")?;
-        display_objects.add_item_to_array(title_display)?;
-
-        let mut credits_display = CJson::create_object()?;
-        credits_display.add_string_to_object("ref", "credits")?;
-        display_objects.add_item_to_array(credits_display)?;
-
-        insert.add_item_to_object("displayObjects", display_objects)?;
+    if let Some(icon) = icon {
+        insert.insert("thumbnail".to_string(), Value::String(icon.to_string()));
     }
 
-    {
-        let mut credits = CJson::create_array()?;
-        let mut credit = CJson::create_object()?;
-        credit.add_string_to_object("kind", "Author")?;
-
-        let mut name = CJson::create_object()?;
-        name.add_string_to_object("display", author_string.unwrap_or("Unknown"))?;
-        credit.add_item_to_object("name", name)?;
-
-        credits.add_item_to_array(credit)?;
-        insert.add_item_to_object("credits", credits)?;
+    if let Some(extra_map) = extra {
+        if let Some(lang) = extra_map.get(EXTRA_LANGUAGE).filter(|l| !l.is_empty()) {
+            // ccat derives titles[1].language from languages[1].
+            insert.insert("languages".to_string(), json!([lang]));
+        }
+        if let Some(publisher) = extra_map.get(EXTRA_PUBLISHER).filter(|p| !p.is_empty()) {
+            insert.insert("publisher".to_string(), Value::String(publisher.clone()));
+        }
+        if let Some(date) = extra_map
+            .get(EXTRA_PUBLICATION_DATE)
+            .filter(|d| !d.is_empty())
+        {
+            insert.insert(
+                "publicationDate".to_string(),
+                Value::String(date.clone()),
+            );
+        }
     }
 
-    {
-        let mut titles = CJson::create_array()?;
-        let mut title_display = CJson::create_object()?;
-        title_display.add_string_to_object(
-            "display",
-            name_string.unwrap_or_else(|| basename(file_path)),
-        )?;
-        titles.add_item_to_array(title_display)?;
-        insert.add_item_to_object("titles", titles)?;
-    }
-
-    if let Some(icon) = icon_string {
-        insert.add_string_to_object("thumbnail", icon)?;
-    }
-
-    // if let Some(extra_map) = extra {
-    //     for (k, v) in extra_map {
-    //         insert.add_string_to_object(k, v)?;
-    //     }
-    // }
-
-    command.add_item_to_object("insert", insert)?;
-    commands.add_item_to_array(command)?;
-    json.add_item_to_object("commands", commands)?;
-
-    Ok(())
+    json!({
+        "type": "ChangeRequest",
+        "commands": [{ "insert": insert }],
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cjson_binding::CJsonRef;
 
-    fn navigate_insert(json: &CJson) -> (CJsonRef, CJsonRef, CJsonRef) {
-        let commands = json.get_object_item("commands").unwrap();
-        let cmd = commands.get_array_item(0).unwrap();
-        let insert = cmd.get_object_item("insert").unwrap();
-        (commands, cmd, insert)
+    fn navigate_insert(json: &Value) -> &Map<String, Value> {
+        json["commands"][0]["insert"].as_object().unwrap()
+    }
+
+    fn assert_extra(insert: &Map<String, Value>, key: &str, expected: &str) {
+        assert_eq!(insert[key].as_str().unwrap(), expected);
     }
 
     #[test]
     fn test_basic_change_request() {
-        let mut json = CJson::create_object().unwrap();
-        generate_change_request(
-            &mut json,
+        let json = generate_change_request(
             "/mnt/us/scripts/test.sh",
             "test-uuid-123",
             Some("My Script"),
@@ -146,92 +143,35 @@ mod tests {
             Some("/mnt/us/scripts/test.sh.sdr/icon.png"),
             true,
             "text/x-shellscript",
+            "PDOC",
             None,
-        )
-        .unwrap();
-
-        assert_eq!(
-            json.get_object_item("type")
-                .unwrap()
-                .get_string_value()
-                .unwrap(),
-            "ChangeRequest"
         );
 
-        let (_, _, insert) = navigate_insert(&json);
-        assert_eq!(
-            insert
-                .get_object_item("uuid")
-                .unwrap()
-                .get_string_value()
-                .unwrap(),
-            "test-uuid-123"
-        );
-        assert_eq!(
-            insert
-                .get_object_item("mimeType")
-                .unwrap()
-                .get_string_value()
-                .unwrap(),
-            "text/x-shellscript"
-        );
-        assert_eq!(
-            insert
-                .get_object_item("cdeType")
-                .unwrap()
-                .get_string_value()
-                .unwrap(),
-            "PDOC"
-        );
+        assert_eq!(json["type"].as_str().unwrap(), "ChangeRequest");
 
-        let tags = insert.get_object_item("displayTags").unwrap();
+        let insert = navigate_insert(&json);
+        assert_eq!(insert["uuid"].as_str().unwrap(), "test-uuid-123");
+        assert_eq!(insert["mimeType"].as_str().unwrap(), "text/x-shellscript");
+        assert_eq!(insert["cdeType"].as_str().unwrap(), "PDOC");
+        assert_eq!(insert["displayTags"][0].as_str().unwrap(), "NEW");
+        assert_eq!(insert["titles"][0]["display"].as_str().unwrap(), "My Script");
         assert_eq!(
-            tags.get_array_item(0).unwrap().get_string_value().unwrap(),
-            "NEW"
-        );
-
-        let titles = insert.get_object_item("titles").unwrap();
-        let title_entry = titles.get_array_item(0).unwrap();
-        assert_eq!(
-            title_entry
-                .get_object_item("display")
-                .unwrap()
-                .get_string_value()
-                .unwrap(),
-            "My Script"
-        );
-
-        let credits = insert.get_object_item("credits").unwrap();
-        let credit = credits.get_array_item(0).unwrap();
-        let name = credit.get_object_item("name").unwrap();
-        assert_eq!(
-            name.get_object_item("display")
-                .unwrap()
-                .get_string_value()
-                .unwrap(),
+            insert["credits"][0]["name"]["display"].as_str().unwrap(),
             "Marek"
         );
-
         assert_eq!(
-            insert
-                .get_object_item("thumbnail")
-                .unwrap()
-                .get_string_value()
-                .unwrap(),
+            insert["thumbnail"].as_str().unwrap(),
             "/mnt/us/scripts/test.sh.sdr/icon.png"
         );
 
-        // Regression: cjson stub on kindlehf caused TypeError on bool fields.
-        // Verify these fields are present and the add succeeded.
-        assert!(insert.get_object_item("isVisibleInHome").is_ok());
-        assert!(insert.get_object_item("isArchived").is_ok());
+        // Regression: bool fields must be present with the right values.
+        assert_eq!(insert["isVisibleInHome"].as_bool().unwrap(), true);
+        assert_eq!(insert["isArchived"].as_bool().unwrap(), false);
     }
 
     #[test]
     fn test_custom_mime_type() {
-        let mut json = CJson::create_object().unwrap();
-        generate_change_request(
-            &mut json,
+        let json = generate_change_request(
             "/mnt/us/books/book.epub",
             "uuid-epub",
             Some("My Book"),
@@ -239,65 +179,70 @@ mod tests {
             None,
             true,
             "application/epub+zip",
+            "EBOK",
             None,
-        )
-        .unwrap();
+        );
 
-        let (_, _, insert) = navigate_insert(&json);
+        let insert = navigate_insert(&json);
         assert_eq!(
-            insert
-                .get_object_item("mimeType")
-                .unwrap()
-                .get_string_value()
-                .unwrap(),
+            insert["mimeType"].as_str().unwrap(),
             "application/epub+zip"
         );
+        assert_eq!(insert["cdeType"].as_str().unwrap(), "EBOK");
     }
 
-    // #[test]
-    // fn test_extra_fields() {
-    //     // let mut extra = HashMap::new();
-    //     // extra.insert("description".to_string(), "A test book".to_string());
-    //     // extra.insert("language".to_string(), "en".to_string());
+    #[test]
+    fn test_extra_fields() {
+        let mut extra = HashMap::new();
+        extra.insert("language".to_string(), "en".to_string());
+        extra.insert("publisher".to_string(), "Example Press".to_string());
+        extra.insert("publicationDate".to_string(), "2015-07-01".to_string());
 
-    //     let mut json = CJson::create_object().unwrap();
-    //     generate_change_request(
-    //         &mut json,
-    //         "/mnt/us/books/book.epub",
-    //         "uuid-extra",
-    //         Some("Book"),
-    //         Some("Author"),
-    //         None,
-    //         false,
-    //         "application/epub+zip",
-    //         Some(&extra),
-    //     )
-    //     .unwrap();
+        let json = generate_change_request(
+            "/mnt/us/books/book.epub",
+            "uuid-extra",
+            Some("Book"),
+            Some("Author"),
+            None,
+            false,
+            "application/epub+zip",
+            "EBOK",
+            Some(&extra),
+        );
 
-    //     let (_, _, insert) = navigate_insert(&json);
-    //     assert_eq!(
-    //         insert
-    //             .get_object_item("description")
-    //             .unwrap()
-    //             .get_string_value()
-    //             .unwrap(),
-    //         "A test book"
-    //     );
-    //     assert_eq!(
-    //         insert
-    //             .get_object_item("language")
-    //             .unwrap()
-    //             .get_string_value()
-    //             .unwrap(),
-    //         "en"
-    //     );
-    // }
+        let insert = navigate_insert(&json);
+        assert_eq!(insert["languages"][0].as_str().unwrap(), "en");
+        assert_extra(insert, "publisher", "Example Press");
+        assert_extra(insert, "publicationDate", "2015-07-01");
+    }
+
+    #[test]
+    fn test_extra_fields_skipped_when_empty() {
+        let mut extra = HashMap::new();
+        extra.insert("language".to_string(), "".to_string());
+        extra.insert("description".to_string(), "not a ccat field".to_string());
+
+        let json = generate_change_request(
+            "/mnt/us/books/book.epub",
+            "uuid-extra",
+            None,
+            None,
+            None,
+            false,
+            "application/epub+zip",
+            "EBOK",
+            Some(&extra),
+        );
+
+        let insert = navigate_insert(&json);
+        assert!(insert.get("languages").is_none());
+        assert!(insert.get("publisher").is_none());
+        assert!(insert.get("description").is_none());
+    }
 
     #[test]
     fn test_null_name_uses_basename() {
-        let mut json = CJson::create_object().unwrap();
-        generate_change_request(
-            &mut json,
+        let json = generate_change_request(
             "/mnt/us/scripts/test.sh",
             "uuid-1",
             None,
@@ -305,28 +250,17 @@ mod tests {
             None,
             false,
             "text/x-shellscript",
+            "PDOC",
             None,
-        )
-        .unwrap();
-
-        let (_, _, insert) = navigate_insert(&json);
-        let titles = insert.get_object_item("titles").unwrap();
-        let title_entry = titles.get_array_item(0).unwrap();
-        assert_eq!(
-            title_entry
-                .get_object_item("display")
-                .unwrap()
-                .get_string_value()
-                .unwrap(),
-            "test.sh"
         );
+
+        let insert = navigate_insert(&json);
+        assert_eq!(insert["titles"][0]["display"].as_str().unwrap(), "test.sh");
     }
 
     #[test]
     fn test_null_author_defaults_to_unknown() {
-        let mut json = CJson::create_object().unwrap();
-        generate_change_request(
-            &mut json,
+        let json = generate_change_request(
             "/mnt/us/scripts/test.sh",
             "uuid-2",
             Some("Name"),
@@ -334,28 +268,20 @@ mod tests {
             None,
             false,
             "text/x-shellscript",
+            "PDOC",
             None,
-        )
-        .unwrap();
+        );
 
-        let (_, _, insert) = navigate_insert(&json);
-        let credits = insert.get_object_item("credits").unwrap();
-        let credit = credits.get_array_item(0).unwrap();
-        let name = credit.get_object_item("name").unwrap();
+        let insert = navigate_insert(&json);
         assert_eq!(
-            name.get_object_item("display")
-                .unwrap()
-                .get_string_value()
-                .unwrap(),
+            insert["credits"][0]["name"]["display"].as_str().unwrap(),
             "Unknown"
         );
     }
 
     #[test]
     fn test_null_icon_omits_thumbnail() {
-        let mut json = CJson::create_object().unwrap();
-        generate_change_request(
-            &mut json,
+        let json = generate_change_request(
             "/mnt/us/scripts/test.sh",
             "uuid-3",
             Some("Name"),
@@ -363,19 +289,17 @@ mod tests {
             None,
             false,
             "text/x-shellscript",
+            "PDOC",
             None,
-        )
-        .unwrap();
+        );
 
-        let (_, _, insert) = navigate_insert(&json);
-        assert!(insert.get_object_item("thumbnail").is_err());
+        let insert = navigate_insert(&json);
+        assert!(insert.get("thumbnail").is_none());
     }
 
     #[test]
     fn test_new_flag_adds_display_tags() {
-        let mut json = CJson::create_object().unwrap();
-        generate_change_request(
-            &mut json,
+        let json = generate_change_request(
             "/mnt/us/scripts/test.sh",
             "uuid-4",
             Some("Name"),
@@ -383,24 +307,18 @@ mod tests {
             None,
             true,
             "text/x-shellscript",
+            "PDOC",
             None,
-        )
-        .unwrap();
-
-        let (_, _, insert) = navigate_insert(&json);
-        let tags = insert.get_object_item("displayTags").unwrap();
-        assert_eq!(
-            tags.get_array_item(0).unwrap().get_string_value().unwrap(),
-            "NEW"
         );
-        assert!(insert.get_object_item("percentFinished").is_err());
+
+        let insert = navigate_insert(&json);
+        assert_eq!(insert["displayTags"][0].as_str().unwrap(), "NEW");
+        assert!(insert.get("percentFinished").is_none());
     }
 
     #[test]
     fn test_update_adds_percent_finished() {
-        let mut json = CJson::create_object().unwrap();
-        generate_change_request(
-            &mut json,
+        let json = generate_change_request(
             "/mnt/us/scripts/test.sh",
             "uuid-5",
             Some("Name"),
@@ -408,13 +326,37 @@ mod tests {
             None,
             false,
             "text/x-shellscript",
+            "PDOC",
             None,
-        )
-        .unwrap();
+        );
 
-        let (_, _, insert) = navigate_insert(&json);
-        let percent = insert.get_object_item("percentFinished").unwrap();
-        assert_eq!(percent.get_number_value().unwrap(), 0.0);
-        assert!(insert.get_object_item("displayTags").is_err());
+        let insert = navigate_insert(&json);
+        assert_eq!(insert["percentFinished"].as_f64().unwrap(), 0.0);
+        assert!(insert.get("displayTags").is_none());
+    }
+
+    #[test]
+    fn test_metadata_fields_from_file() {
+        let path = std::env::temp_dir().join("kompanion_change_request_test.txt");
+        std::fs::write(&path, b"x").unwrap();
+
+        let json = generate_change_request(
+            path.to_str().unwrap(),
+            "uuid-6",
+            Some("Name"),
+            None,
+            None,
+            false,
+            "text/plain",
+            "PDOC",
+            None,
+        );
+
+        std::fs::remove_file(&path).unwrap();
+
+        let insert = navigate_insert(&json);
+        assert!(insert["contentSize"].as_u64().unwrap() >= 1);
+        assert!(insert["diskUsage"].as_u64().unwrap() >= 1);
+        assert!(insert["modificationTime"].as_u64().is_some());
     }
 }

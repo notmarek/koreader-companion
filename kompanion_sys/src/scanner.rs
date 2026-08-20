@@ -1,6 +1,9 @@
 use std::sync::Mutex;
 
-use cjson_binding::CJson;
+use serde_json::Value;
+
+#[cfg(all(feature = "real-scanner", not(test), not(target_arch = "x86_64")))]
+use crate::ccat;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
@@ -26,12 +29,11 @@ impl ScannerEventType {
 }
 
 pub trait ScanManager: Send + Sync {
-    fn post_change(&self, json: &CJson) -> i32;
+    fn post_change(&self, json: &Value) -> i32;
     fn gen_uuid(&self, out: &mut [u8; 37]);
     fn get_thumbnail_for_uuid(&self, uuid: &str) -> Option<String>;
     fn update_ccat(&self, uuid: &str, thumbnail_path: &str);
     fn delete_ccat_entry(&self, uuid: &str);
-    fn get_sha1_hash(&self, data: &str) -> String;
 }
 
 pub static SCANNER: std::sync::OnceLock<Box<dyn ScanManager + 'static>> =
@@ -72,8 +74,8 @@ impl Default for MockScanManager {
 }
 
 impl ScanManager for MockScanManager {
-    fn post_change(&self, json: &CJson) -> i32 {
-        let s = json.print().unwrap_or_default();
+    fn post_change(&self, json: &Value) -> i32 {
+        let s = json.to_string();
         eprintln!("[MOCK scanner] post_change: {}", &s[..s.len().min(200)]);
         self.posted_changes.lock().unwrap().push(s);
         0
@@ -108,27 +110,15 @@ impl ScanManager for MockScanManager {
         eprintln!("[MOCK scanner] delete_ccat_entry: {}", uuid);
         self.deleted_entries.lock().unwrap().push(uuid.to_string());
     }
-
-    fn get_sha1_hash(&self, _data: &str) -> String {
-        "0000000000000000000000000000000000000000".to_string()
-    }
 }
 
 #[cfg(all(feature = "real-scanner", not(test), not(target_arch = "x86_64")))]
 mod raw {
-    use std::os::raw::{c_char, c_int, c_void};
+    use std::os::raw::{c_char, c_int};
 
     #[cfg_attr(feature = "link-scanner", link(name = "scanner"))]
     extern "C" {
-        pub fn scanner_post_change(json: *mut c_void) -> c_int;
         pub fn scanner_gen_uuid(out: *mut c_char, buffer_size: c_int);
-        pub fn scanner_get_thumbnail_for_uuid(uuid: *mut c_char) -> *mut c_char;
-        pub fn scanner_update_ccat_entry_with_thumbpath(
-            uuid: *mut c_char,
-            thumbnail_path: *mut c_char,
-        );
-        pub fn scanner_delete_ccat_entry(uuid: *mut c_char);
-        pub fn getSha1Hash(data: *const c_char) -> *mut c_char;
     }
 }
 
@@ -142,8 +132,8 @@ struct RealScanner;
 
 #[cfg(all(feature = "real-scanner", not(test), not(target_arch = "x86_64")))]
 impl ScanManager for RealScanner {
-    fn post_change(&self, json: &CJson) -> i32 {
-        unsafe { raw::scanner_post_change(json.as_ptr() as *mut _) }
+    fn post_change(&self, json: &Value) -> i32 {
+        ccat::post_change(json)
     }
 
     fn gen_uuid(&self, out: &mut [u8; 37]) {
@@ -153,39 +143,15 @@ impl ScanManager for RealScanner {
     }
 
     fn get_thumbnail_for_uuid(&self, uuid: &str) -> Option<String> {
-        let c_str = std::ffi::CString::new(uuid).unwrap();
-        let ptr = unsafe { raw::scanner_get_thumbnail_for_uuid(c_str.as_ptr() as *mut _) };
-        if ptr.is_null() {
-            None
-        } else {
-            let s = unsafe { std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned() };
-            Some(s)
-        }
+        log::warn!("get_thumbnail_for_uuid({uuid}) is not implemented over HTTP");
+        None
     }
 
     fn update_ccat(&self, uuid: &str, thumbnail_path: &str) {
-        let c_uuid = std::ffi::CString::new(uuid).unwrap();
-        let c_path = std::ffi::CString::new(thumbnail_path).unwrap();
-        unsafe {
-            raw::scanner_update_ccat_entry_with_thumbpath(
-                c_uuid.as_ptr() as *mut _,
-                c_path.as_ptr() as *mut _,
-            );
-        }
+        let _ = ccat::update_thumbnail(uuid, thumbnail_path);
     }
 
     fn delete_ccat_entry(&self, uuid: &str) {
-        let c_str = std::ffi::CString::new(uuid).unwrap();
-        unsafe { raw::scanner_delete_ccat_entry(c_str.as_ptr() as *mut _) };
-    }
-
-    fn get_sha1_hash(&self, data: &str) -> String {
-        let c_str = std::ffi::CString::new(data).unwrap();
-        let ptr = unsafe { raw::getSha1Hash(c_str.as_ptr()) };
-        if ptr.is_null() {
-            String::new()
-        } else {
-            unsafe { std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned() }
-        }
+        let _ = ccat::delete_ccat_entry(uuid);
     }
 }

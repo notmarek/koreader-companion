@@ -47,4 +47,13 @@ mod tests {
         assert!(!idx.can_handle("book.sh"));
         assert_eq!(idx.mime_type(), "application/epub+zip");
     }
+
+    #[test]
+    fn test_cde_type_per_indexer() {
+        init_registry();
+        assert_eq!(find_indexer("book.epub").unwrap().cde_type(), "EBOK");
+        assert_eq!(find_indexer("book.fb2").unwrap().cde_type(), "EBOK");
+        // CBZ stays a personal document: there is no comic cdeType in ccat.
+        assert_eq!(find_indexer("comic.cbz").unwrap().cde_type(), "EBOK");
+    }
 }

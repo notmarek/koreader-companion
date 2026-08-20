@@ -87,6 +87,10 @@ impl FileIndexer for EpubIndexer {
     fn mime_type(&self) -> &str {
         "application/epub+zip"
     }
+
+    fn cde_type(&self) -> &str {
+        "EBOK"
+    }
 }
 
 fn extract_cover_zip(epub_path: &str, sdr_path: &str) -> Result<Option<String>, String> {

@@ -1,6 +1,5 @@
 use std::os::raw::{c_char, c_int, c_void};
 
-use cjson_binding::CJson;
 use kompanion_core::change_request::generate_change_request;
 
 use kompanion_sys::scanner::{get_scanner_manager, ScannerEventType};
@@ -105,16 +104,7 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
                 indexer.on_install(&full_path);
             }
 
-            let mut json = match CJson::create_object() {
-                Ok(j) => j,
-                Err(_) => {
-                    log::error!("Failed to create CJson object");
-                    return 1;
-                }
-            };
-
-            if let Err(e) = generate_change_request(
-                &mut json,
+            let json = generate_change_request(
                 &full_path,
                 &uuid_str,
                 metadata.name.as_deref(),
@@ -122,18 +112,16 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
                 icon.as_deref(),
                 true,
                 indexer.mime_type(),
+                indexer.cde_type(),
                 if metadata.extra.is_empty() {
                     None
                 } else {
                     Some(&metadata.extra)
                 },
-            ) {
-                log::error!("Failed to generate change request: {:?}", e);
-                return 1;
-            }
+            );
 
             let result = scanner.post_change(&json);
-            let json_str = json.print().unwrap_or_default();
+            let json_str = serde_json::to_string_pretty(&json).unwrap_or_default();
             log::debug!("Indexing json:\n{}", json_str);
             log::debug!("ccat error: {}", result);
             0
@@ -200,16 +188,7 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
                 indexer.on_install(&full_path);
             }
 
-            let mut json = match CJson::create_object() {
-                Ok(j) => j,
-                Err(_) => {
-                    log::error!("Failed to create CJson object");
-                    return 1;
-                }
-            };
-
-            if let Err(e) = generate_change_request(
-                &mut json,
+            let json = generate_change_request(
                 &full_path,
                 &new_uuid,
                 metadata.name.as_deref(),
@@ -217,15 +196,13 @@ extern "C" fn extractor_callback(event: *const ScannerEvent) -> c_int {
                 icon.as_deref(),
                 false,
                 indexer.mime_type(),
+                indexer.cde_type(),
                 if metadata.extra.is_empty() {
                     None
                 } else {
                     Some(&metadata.extra)
                 },
-            ) {
-                log::error!("Failed to generate change request: {:?}", e);
-                return 1;
-            }
+            );
 
             scanner.post_change(&json);
             0

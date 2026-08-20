@@ -55,6 +55,10 @@ impl FileIndexer for Fb2Indexer {
     fn mime_type(&self) -> &str {
         "application/fictionbook2+zip"
     }
+
+    fn cde_type(&self) -> &str {
+        "EBOK"
+    }
 }
 
 /// Parse an FB2 book from either a raw `.fb2` file or a zipped `.fbz` / `.fb2.zip`.

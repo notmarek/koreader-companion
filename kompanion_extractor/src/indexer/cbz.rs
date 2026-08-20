@@ -89,6 +89,10 @@ impl FileIndexer for CbzIndexer {
         Ok(cover)
     }
 
+    fn cde_type(&self) -> &str {
+        "EBOK"
+    }
+
     fn mime_type(&self) -> &str {
         "application/vnd.comicbook+zip"
     }

@@ -6,7 +6,9 @@ authors.workspace = true
 description.workspace = true
 
 [dependencies]
-cjson-bindings = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+ureq = { workspace = true }
 
 [features]
 default = []
