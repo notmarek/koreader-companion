@@ -68,24 +68,31 @@ pub fn decode_go_path(file_path: &str) -> String {
     )
 }
 
+const KOREADER_SH: &str = "/mnt/us/koreader/koreader.sh";
+const SU_PATH: &str = "/var/local/mkk/su";
+
+// Quote `s` as a single POSIX shell word. Inside single quotes the shell
+// expands nothing (`$`, backticks, `\` and `"` are all literal); a literal
+// single quote is written as '\'' (close quote, escaped quote, reopen quote).
+pub fn sh_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+// Build the command line that `su -c` hands to a root shell. The path is the
+// only untrusted part (it comes from the book's filename), so it is passed as
+// one single-quoted word.
 pub fn build_launch_command(file_path: &str) -> String {
-    format!("/mnt/us/koreader/koreader.sh --asap \"{}\"", file_path)
+    format!("{} --asap {}", KOREADER_SH, sh_quote(file_path))
 }
 
-// Wrap `command` in a single-quoted `su_path -c '...'` invocation.
-// Single quotes in the command are escaped via the '\'' idiom so filenames
-// containing apostrophes (e.g. "The Webs' Archive.epub") survive the shell.
-pub fn build_spawn_command(su_path: &str, command: &str) -> String {
-    let escaped = command.replace('\'', "'\\''");
-    format!("{} -c '{}'", su_path, escaped)
-}
-
+// Run `command` as root through su. su is spawned directly rather than via
+// `sh -c "su -c '...'"`, so the command is parsed by exactly one shell (the
+// one su starts) and sh_quote's quoting is the only quoting that applies.
 pub fn spawn_app(command: &str) -> Result<i32, String> {
     log::info!("Spawning app with command: {}", command);
-    let command_str = build_spawn_command("/var/local/mkk/su", command);
-    match std::process::Command::new("sh")
+    match std::process::Command::new(SU_PATH)
         .arg("-c")
-        .arg(&command_str)
+        .arg(command)
         .spawn()
     {
         Ok(child) => Ok(child.id() as i32),
@@ -146,44 +153,44 @@ mod tests {
     #[test]
     fn test_build_launch_command_simple() {
         let cmd = build_launch_command("/mnt/us/documents/book.epub");
-        assert_eq!(cmd, "/mnt/us/koreader/koreader.sh --asap \"/mnt/us/documents/book.epub\"");
+        assert_eq!(cmd, "/mnt/us/koreader/koreader.sh --asap '/mnt/us/documents/book.epub'");
     }
 
     #[test]
     fn test_build_launch_command_spaces_in_filename() {
-        // Regression: single-quoted path broke for filenames with spaces — the shell
-        // closed the outer su -c '...' quote at the first space, splitting the filename
-        // into separate words. koreader.sh then received only the first word as the path.
-        let cmd = build_launch_command("/mnt/us/documents/Wie du die Affen in deinem Kopf zähmst.epub");
-        assert!(cmd.contains("\""), "path must be double-quoted to survive spaces in su -c '...'");
-        assert!(cmd.contains("Wie du die Affen in deinem Kopf zähmst.epub"), "full filename must be preserved");
-        assert!(!cmd.contains("'"), "no single quotes in command — spawn_app wraps in single quotes");
+        // Regression: the path must reach koreader.sh as one argument, not be split
+        // into separate words at the spaces.
+        let path = "/mnt/us/documents/Wie du die Affen in deinem Kopf zähmst.epub";
+        assert_eq!(path_via_shell(path), path);
     }
 
-    // Run build_spawn_command through a real sh, substituting `printf '%s\n'` for
-    // su. printf prints each argument on its own line; line 0 is "-c", line 1 is
-    // the inner command string — i.e. exactly what su would have received.
-    fn inner_via_shell(file_path: &str) -> String {
-        let launch_cmd = build_launch_command(file_path);
-        let spawn_cmd = build_spawn_command("printf '%s\\n'", &launch_cmd);
+    // Run the launch command through a real `sh -c`, which is what `su -c` does on
+    // the device, with koreader.sh swapped for `printf '%s\0'`. printf prints each
+    // argument NUL-terminated: field 0 is "--asap", field 1 is exactly the path
+    // koreader.sh would receive (newlines included).
+    fn path_via_shell(file_path: &str) -> String {
+        let cmd = build_launch_command(file_path).replacen(KOREADER_SH, "printf '%s\\0'", 1);
         let output = std::process::Command::new("sh")
-            .args(["-c", &spawn_cmd])
+            .args(["-c", &cmd])
             .output()
             .expect("sh must be available");
         assert!(
             output.status.success(),
-            "shell rejected spawn command for {:?}: {}",
+            "shell rejected launch command for {:?}: {}",
             file_path,
             String::from_utf8_lossy(&output.stderr)
         );
         let stdout = String::from_utf8_lossy(&output.stdout);
-        stdout.lines().nth(1).unwrap_or("").to_string()
+        let fields: Vec<&str> = stdout.split('\0').collect();
+        assert_eq!(fields.len(), 3, "expected exactly two arguments, got {:?}", fields);
+        assert_eq!(fields[0], "--asap");
+        fields[1].to_string()
     }
 
     #[test]
     fn test_build_launch_command_umlaut() {
         let cmd = build_launch_command("/mnt/us/documents/Bücher/käfer.epub");
-        assert_eq!(cmd, "/mnt/us/koreader/koreader.sh --asap \"/mnt/us/documents/Bücher/käfer.epub\"");
+        assert_eq!(cmd, "/mnt/us/koreader/koreader.sh --asap '/mnt/us/documents/Bücher/käfer.epub'");
     }
 
     #[test]
@@ -192,13 +199,12 @@ mod tests {
         // ISBN, hash, and source tag — all separated by " -- "
         let path = "/mnt/us/documents/الرمز المفقود، طبعة خاصة مصورة [Arabic] -- دان براون -- 2009 -- https___t_me_mystery_books_ar -- isbn13 9780385533829 -- 4c09d7143957f731b60438ded778b988 -- The Webs' Archive.epub";
         let cmd = build_launch_command(path);
-        assert!(cmd.contains("\""), "path must be double-quoted");
         assert!(cmd.contains("الرمز المفقود"), "Arabic title preserved");
         assert!(cmd.contains("[Arabic]"), "bracketed tag preserved");
         assert!(cmd.contains("دان براون"), "Arabic author preserved");
         assert!(cmd.contains("isbn13 9780385533829"), "ISBN preserved");
         assert!(cmd.contains("4c09d7143957f731b60438ded778b988"), "hash preserved");
-        assert!(cmd.contains("The Webs' Archive.epub"), "source tag with apostrophe preserved");
+        assert_eq!(path_via_shell(path), path, "source tag with apostrophe preserved");
     }
 
     #[test]
@@ -209,18 +215,16 @@ mod tests {
         let cmd = build_launch_command(path);
         assert!(cmd.contains("براون، دان"), "Arabic author with Arabic comma preserved");
         assert!(cmd.contains("Penguin Random House LLC, New York, 2013"), "publisher with commas and year preserved");
-        assert!(cmd.contains("The Webs' Archive.mobi"), ".mobi extension and source tag preserved");
+        assert_eq!(path_via_shell(path), path, ".mobi extension and source tag preserved");
     }
 
     #[test]
     fn test_build_launch_command_apostrophe_in_path() {
-        // build_launch_command double-quotes the path, so an apostrophe in the filename
-        // is safe at this level. Note: spawn_app wraps the whole command in single quotes,
-        // so a literal ' in the path would break the su -c '...' shell invocation.
+        // A literal ' must be written as '\'' inside the single-quoted word.
         let path = "/mnt/us/documents/The Webs' Archive.epub";
         let cmd = build_launch_command(path);
-        assert!(cmd.contains("\""), "path must be double-quoted");
-        assert!(cmd.contains("The Webs' Archive.epub"), "apostrophe passed through at build level");
+        assert!(cmd.ends_with("'/mnt/us/documents/The Webs'\\'' Archive.epub'"));
+        assert_eq!(path_via_shell(path), path);
     }
 
     #[test]
@@ -235,22 +239,68 @@ mod tests {
     }
 
     #[test]
-    fn test_build_spawn_command_escapes_apostrophe() {
-        let cmd = build_spawn_command("/bin/su", "koreader.sh --asap \"The Webs' Archive.epub\"");
-        // '\'' is the standard sh idiom for a literal ' inside single-quoted strings
-        assert!(cmd.contains("'\\''"), "apostrophe must be escaped with the '\\'' idiom");
+    fn test_sh_quote() {
+        assert_eq!(sh_quote("plain"), "'plain'");
+        assert_eq!(sh_quote(""), "''");
+        assert_eq!(sh_quote("it's"), "'it'\\''s'");
+        assert_eq!(sh_quote("$HOME `x` \"q\" \\"), "'$HOME `x` \"q\" \\'");
+    }
+
+    #[test]
+    fn test_shell_metacharacters_reach_koreader_verbatim() {
+        // Regression: the path used to sit inside double quotes in the root shell,
+        // where $VAR, $(...) and `...` are still expanded. "$100M Offers.epub"
+        // arrived as "00M Offers.epub" and could not be opened.
+        for name in [
+            "$100M Offers.epub",
+            "Price $HOME.epub",
+            "Price `echo 2026`.epub",
+            "He said \"hi\".epub",
+            "back\\slash.epub",
+            "semi; colon & amp | pipe.epub",
+            "glob * ? [a].epub",
+            "line\nbreak.epub",
+            "'leading and trailing'.epub",
+        ] {
+            let path = format!("/mnt/us/documents/{}", name);
+            assert_eq!(path_via_shell(&path), path, "path changed for {:?}", name);
+        }
+    }
+
+    #[test]
+    fn test_command_substitution_in_filename_is_not_executed() {
+        // A filename must never be able to run commands in the root shell.
+        let marker = std::env::temp_dir().join(format!(
+            "kompanion_injection_marker_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&marker);
+        let marker = marker.to_string_lossy().into_owned();
+        for name in [
+            format!("x$(touch {}).epub", marker),
+            format!("x`touch {}`.epub", marker),
+            format!("x'; touch {}; '.epub", marker),
+        ] {
+            let path = format!("/mnt/us/documents/{}", name);
+            assert_eq!(path_via_shell(&path), path);
+            assert!(
+                !std::path::Path::new(&marker).exists(),
+                "filename {:?} executed a command",
+                name
+            );
+        }
     }
 
     #[test]
     fn test_shell_execution_umlaut() {
-        let inner = inner_via_shell("/mnt/us/documents/Wie du die Affen in deinem Kopf zähmst_ 20 Monkey-Mind-Hacks -- Baumgartner, Paul Johannes.epub");
+        let inner = path_via_shell("/mnt/us/documents/Wie du die Affen in deinem Kopf zähmst_ 20 Monkey-Mind-Hacks -- Baumgartner, Paul Johannes.epub");
         assert!(inner.contains("Wie du die Affen in deinem Kopf zähmst"), "umlaut filename preserved through shell");
         assert!(inner.contains("Baumgartner, Paul Johannes"), "comma in author preserved");
     }
 
     #[test]
     fn test_shell_execution_arabic_epub() {
-        let inner = inner_via_shell("/mnt/us/documents/الرمز المفقود، طبعة خاصة مصورة [Arabic] -- دان براون -- 2009 -- https___t_me_mystery_books_ar -- isbn13 9780385533829 -- 4c09d7143957f731b60438ded778b988 -- The Webs' Archive.epub");
+        let inner = path_via_shell("/mnt/us/documents/الرمز المفقود، طبعة خاصة مصورة [Arabic] -- دان براون -- 2009 -- https___t_me_mystery_books_ar -- isbn13 9780385533829 -- 4c09d7143957f731b60438ded778b988 -- The Webs' Archive.epub");
         assert!(inner.contains("الرمز المفقود"), "Arabic title preserved through shell");
         assert!(inner.contains("isbn13 9780385533829"), "ISBN preserved");
         assert!(inner.contains("The Webs' Archive.epub"), "apostrophe in source tag survived shell quoting");
@@ -258,14 +308,14 @@ mod tests {
 
     #[test]
     fn test_shell_execution_arabic_mobi() {
-        let inner = inner_via_shell("/mnt/us/documents/براون، دان - جحيم [Arabic] -- دان براون -- Penguin Random House LLC, New York, 2013 -- https___t_me_mystery_books_ar -- isbn13 9780385537858 -- 079c203c83fa25d6261722e930cdc824 -- The Webs' Archive.mobi");
+        let inner = path_via_shell("/mnt/us/documents/براون، دان - جحيم [Arabic] -- دان براون -- Penguin Random House LLC, New York, 2013 -- https___t_me_mystery_books_ar -- isbn13 9780385537858 -- 079c203c83fa25d6261722e930cdc824 -- The Webs' Archive.mobi");
         assert!(inner.contains("Penguin Random House LLC, New York, 2013"), "commas in publisher preserved");
         assert!(inner.contains("The Webs' Archive.mobi"), ".mobi with apostrophe preserved");
     }
 
     #[test]
     fn test_shell_execution_arabic_unknown_author() {
-        let inner = inner_via_shell("/mnt/us/documents/درجة ممارسة رؤساء الأقسام الأكاديمية في كليات الجامعة -- مجهول -- www_goldenshamela_com -- fe90b27bb3ac46c030ded0f30783a9a4 -- The Webs' Archive.epub");
+        let inner = path_via_shell("/mnt/us/documents/درجة ممارسة رؤساء الأقسام الأكاديمية في كليات الجامعة -- مجهول -- www_goldenshamela_com -- fe90b27bb3ac46c030ded0f30783a9a4 -- The Webs' Archive.epub");
         assert!(inner.contains("مجهول"), "Arabic unknown-author marker preserved");
         assert!(inner.contains("www_goldenshamela_com"), "URL slug preserved");
         assert!(inner.contains("The Webs' Archive.epub"), "apostrophe survived");
@@ -273,11 +323,11 @@ mod tests {
 
     #[test]
     fn test_shell_execution_persian_pdf() {
-        let inner = inner_via_shell("/mnt/us/documents/حساب دیفرانسیل و انتگرال و هندسه تحلیلی - جلد اول قسمت اول -- جورج توماس , راس فینی _ برگردان به پارسی از سیامک کاظمی، -- 1_1, 7 -- مرکز نشر دانش.pdf");
+        let inner = path_via_shell("/mnt/us/documents/حساب دیفرانسیل و انتگرال و هندسه تحلیلی - جلد اول قسمت اول -- جورج توماس , راس فینی _ برگردان به پارسی از سیامک کاظمی، -- 1_1, 7 -- مرکز نشر دانش.pdf");
         assert!(inner.contains("حساب دیفرانسیل"), "Persian title preserved through shell");
         assert!(inner.contains("1_1, 7"), "version with underscore preserved");
         assert!(inner.contains("مرکز نشر دانش"), "Persian publisher preserved");
-        assert!(inner.ends_with(".pdf\""), ".pdf extension at end of command");
+        assert!(inner.ends_with(".pdf"), ".pdf extension at end of path");
     }
 
     #[test]
@@ -290,7 +340,7 @@ mod tests {
         assert!(cmd.contains("مجهول"), "Arabic unknown-author marker preserved");
         assert!(cmd.contains("www_goldenshamela_com"), "URL slug with underscores preserved");
         assert!(cmd.contains("fe90b27bb3ac46c030ded0f30783a9a4"), "hash preserved");
-        assert!(cmd.contains("The Webs' Archive.epub"), "source tag preserved");
+        assert_eq!(path_via_shell(path), path, "source tag preserved");
     }
 
     #[test]
@@ -304,7 +354,7 @@ mod tests {
         assert!(cmd.contains("برگردان به پارسی از سیامک کاظمی،"), "translator notation preserved");
         assert!(cmd.contains("1_1, 7"), "version string with underscore preserved");
         assert!(cmd.contains("مرکز نشر دانش"), "Persian publisher preserved");
-        assert!(cmd.ends_with(".pdf\""), ".pdf extension preserved");
+        assert!(cmd.ends_with(".pdf'"), ".pdf extension preserved");
     }
 
     #[test]
