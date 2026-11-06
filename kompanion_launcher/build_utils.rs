@@ -52,15 +52,24 @@ pub fn generate_install_sql(specs: &[IndexerSpec]) -> String {
     out.push_str(&format!("DELETE FROM mimetypes WHERE ext IN ({exts});\n"));
     out.push_str(&format!("DELETE FROM extenstions WHERE ext IN ({exts});\n\n"));
 
+    // `mimetypes` maps every extension to its mime type. `extenstions` maps a mime
+    // type back to one extension and has a UNIQUE constraint on `mimetype`, so only
+    // the first extension per mime type goes in there (e.g. `fb2`, not `fbz` or
+    // `fb2.zip`). Inserting the others fails with
+    // "UNIQUE constraint failed: extenstions.mimetype" on every install.
+    let mut reverse_mapped: Vec<&str> = Vec::new();
     for spec in specs {
         out.push_str(&format!(
             "INSERT INTO mimetypes (ext, mimetype) VALUES ('{}', 'MT:{}');\n",
             spec.extension, spec.mime_type
         ));
-        out.push_str(&format!(
-            "INSERT INTO extenstions (ext, mimetype) VALUES ('{}', 'MT:{}');\n",
-            spec.extension, spec.mime_type
-        ));
+        if !reverse_mapped.contains(&spec.mime_type.as_str()) {
+            reverse_mapped.push(&spec.mime_type);
+            out.push_str(&format!(
+                "INSERT INTO extenstions (ext, mimetype) VALUES ('{}', 'MT:{}');\n",
+                spec.extension, spec.mime_type
+            ));
+        }
     }
 
     out.push_str("\n-- Launcher: clean old rows first (safe reinstall)\n");
@@ -341,6 +350,17 @@ impl FileIndexer for CbzIndexer {
                 .count(),
             3
         );
+
+        // `extenstions.mimetype` is UNIQUE on the device: exactly one reverse
+        // mapping per mime type, using the first extension.
+        assert_eq!(
+            sql.matches("INSERT INTO extenstions (ext, mimetype) VALUES ('")
+                .count(),
+            1
+        );
+        assert!(sql.contains(
+            "INSERT INTO extenstions (ext, mimetype) VALUES ('fb2', 'MT:application/fictionbook2+zip');"
+        ));
         assert!(sql.contains(
             "INSERT INTO associations (interface, handlerId, contentId, defaultAssoc) VALUES ('extractor', 'com.notmarek.kompanion.extractor', 'GL:*.fb2.zip', 'true');"
         ));
