@@ -217,7 +217,7 @@ pub extern "C" fn load_extractor(
     unk1: *mut c_int,
 ) -> c_int {
     crate::log::init("/mnt/us/kompanion.log");
-    log::info!("kompanion extractor v4.1.0 initialised");
+    log::info!("kompanion extractor v{} initialised", env!("CARGO_PKG_VERSION"));
 
     crate::indexer::init_registry();
 

@@ -101,7 +101,9 @@ extern "C" fn go_ccb(
     let decoded_path = callbacks::decode_go_path(&file_path);
     log::debug!("Decoded path: \"{}\"", decoded_path);
 
-    let _ = filetime::set_file_mtime(&decoded_path, filetime::FileTime::now());
+    if let Err(e) = filetime::set_file_mtime(&decoded_path, filetime::FileTime::now()) {
+        log::warn!("Failed to update mtime of \"{}\": {}", decoded_path, e);
+    }
 
     mgr.set_int_property(lipc, "com.lab126.scanner", "doFullScan", 1);
 

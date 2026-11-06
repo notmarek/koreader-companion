@@ -41,7 +41,8 @@ fn ccat_port() -> u16 {
 fn read_session_token() -> Option<String> {
     let token = std::fs::read_to_string(SESSION_TOKEN_PATH).ok()?;
     let token = token.trim().to_string();
-    log::info!("TOKEN: {:?}", token);
+    // Never log the token itself: the log lives on the USB-visible /mnt/us.
+    log::debug!("ccat session token present: {}", !token.is_empty());
     if token.is_empty() {
         None
     } else {
