@@ -9,9 +9,7 @@ INSERT INTO extenstions (ext, mimetype) VALUES ('cbz', 'MT:application/vnd.comic
 INSERT INTO mimetypes (ext, mimetype) VALUES ('fb2', 'MT:application/fictionbook2+zip');
 INSERT INTO extenstions (ext, mimetype) VALUES ('fb2', 'MT:application/fictionbook2+zip');
 INSERT INTO mimetypes (ext, mimetype) VALUES ('fbz', 'MT:application/fictionbook2+zip');
-INSERT INTO extenstions (ext, mimetype) VALUES ('fbz', 'MT:application/fictionbook2+zip');
 INSERT INTO mimetypes (ext, mimetype) VALUES ('fb2.zip', 'MT:application/fictionbook2+zip');
-INSERT INTO extenstions (ext, mimetype) VALUES ('fb2.zip', 'MT:application/fictionbook2+zip');
 
 -- Launcher: clean old rows first (safe reinstall)
 DELETE FROM associations WHERE handlerId = 'com.notmarek.kompanion.launcher';
